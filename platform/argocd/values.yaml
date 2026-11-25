@@ -1,0 +1,45 @@
+# Argo CD base values (SPEC §5.8). Used verbatim by bootstrap/scripts/gitops-bootstrap.sh (first install, helm) and by
+# the self-managing Argo CD `argocd` Application. Chart version: versions.env ARGOCD_CHART_VERSION.
+# Keys checked against `helm show values argo-cd --version <pinned>` (Phase 3).
+# values-monitoring.yaml (ServiceMonitors) is added in Phase 7.
+
+global:
+  domain: argocd.boutique.test           # served through the Gateway in Phase 6 (TLS terminated there)
+  # every component on the infra node (ARCHITECTURE §4)
+  nodeSelector:
+    kubernetes.io/os: linux
+    node.boutique.io/pool: infra
+  tolerations:
+    - key: node.boutique.io/dedicated
+      operator: Equal
+      value: infra
+      effect: NoSchedule
+
+configs:
+  params:
+    server.insecure: true                # TLS ends at the Gateway (ARCHITECTURE §13)
+  cm:
+    # app-of-apps: let sync waves wait for child Application health (removed from Argo CD core in 1.8).
+    # Source: Argo CD docs, operator-manual/health.md "Argo CD App" (argoproj.io/Application).
+    resource.customizations.health.argoproj.io_Application: |
+      hs = {}
+      hs.status = "Progressing"
+      hs.message = ""
+      if obj.status ~= nil then
+        if obj.status.health ~= nil then
+          hs.status = obj.status.health.status
+          if obj.status.health.message ~= nil then
+            hs.message = obj.status.health.message
+          end
+        end
+      end
+      return hs
+    # resource.exclusions: the chart default is kept on purpose. It already excludes the Cilium-generated
+    # CiliumIdentity / CiliumEndpoint / CiliumEndpointSlice (Cilium docs "argocd-issues"); overriding the key would
+    # drop the other defaults (ARCHITECTURE §15-5).
+
+# not used in this lab: no SSO (dex) and no external notification targets (SPEC §10 Q6)
+dex:
+  enabled: false
+notifications:
+  enabled: false
