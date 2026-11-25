@@ -7,7 +7,7 @@
 Host/경로/헤더/가중치 라우팅, TLS 종료, 팀 간 소유권 분리가 필요하다. Kubernetes Ingress는 기능이 제한적이고 구현별 어노테이션에 의존하며, 대표 구현인 ingress-nginx는 은퇴했다.
 
 ## 결정
-Gateway API v1.6.1(Cilium 1.20 요구 버전)을 사용한다. 플랫폼 소유 공유 Gateway `edge`(ns `gateway`) + 네임스페이스별 HTTPRoute, `allowedRoutes` 라벨 셀렉터와 ReferenceGrant로 경계를 둔다. 인증서는 cert-manager 사설 CA.
+Gateway API v1.6.3(Cilium 1.20.5 문서가 지정한 버전)을 사용한다. 플랫폼 소유 공유 Gateway `edge`(ns `gateway`) + 네임스페이스별 HTTPRoute, `allowedRoutes` 라벨 셀렉터와 ReferenceGrant로 경계를 둔다. 인증서는 cert-manager 사설 CA.
 
 ## 대안
 - Envoy Gateway: 기능이 풍부한 독립 구현. 단 CNI 정책 identity와 분리되고 구성요소 추가

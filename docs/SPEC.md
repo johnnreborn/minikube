@@ -210,7 +210,7 @@ yamllint, kubeconform, gitleaks(권장), argocd CLI(선택, `--core` 모드).
 | Kubernetes (kindest/node) | v1.36.4 `@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed` | kind 릴리스 노트의 digest로 재확인. Cilium 1.20 지원 범위 확인 필수 |
 | Cilium (chart/image) | 1.20.x 최신 패치 | 1.20.0 GA 2026-07-29 |
 | cilium-cli, hubble CLI | Cilium 1.20 호환 최신 | |
-| Gateway API CRDs | v1.6.1 | Cilium 1.20 기준. 필요한 채널(standard/experimental)과 CRD 목록은 Cilium 1.20 문서의 prerequisites를 따름 |
+| Gateway API CRDs | v1.6.3 | Cilium 1.20.5 문서(`conf.py`의 `gateway_api_version`) 기준. 필요한 채널(standard/experimental)과 CRD 목록은 Cilium 1.20 문서의 prerequisites를 따름 |
 | Argo CD | 3.5.x 최신 패치 (argo/argo-cd 차트 대응 버전) | 3.5 GA 2026-08. 3.6 GA 시 채택 여부는 Phase 0 판단 |
 | cert-manager | 최신 stable v1.x | |
 | kube-prometheus-stack / prometheus-operator-crds | 최신 stable (서로 호환되는 조합) | CRD는 별도 차트로 관리 |
@@ -296,8 +296,6 @@ l2announcements:
   leaseDuration: 3s
   leaseRenewDeadline: 1s
   leaseRetryPeriod: 200ms
-externalIPs:
-  enabled: true
 k8sClientRateLimit:          # L2 lease 갱신으로 API 호출 증가 → 상향
   qps: 50
   burst: 100
@@ -552,7 +550,7 @@ flowchart LR
 **목표**: Cilium으로 노드를 Ready로 만들고 kube-proxy 대체·Gateway API·L2·Hubble 기반 기능을 활성화한다.
 
 **작업**
-1. Gateway API CRD(v1.6.1, Cilium 1.20 요구 목록)를 `platform/gateway-api-crds/`에 벤더링하고 `kubectl apply --server-side`
+1. Gateway API CRD(v1.6.3 standard, Cilium 1.20 요구 목록 7종)를 `platform/gateway-api-crds/`에 벤더링하고 `kubectl apply --server-side`
 2. `platform/cilium/values.yaml`(§5.3) 작성, `bootstrap/scripts/cni.sh`로 `helm upgrade --install` (버전은 `versions.env`)
 3. `cilium status --wait`, `cilium connectivity test`(완료 후 테스트 네임스페이스 정리)
 4. `tests/phase-2.sh`
@@ -565,7 +563,7 @@ flowchart LR
 | AC-2.3 | MUST | 모든 agent에서 KubeProxyReplacement True, Service LB 알고리즘 Maglev | `kubectl -n kube-system exec ds/cilium -- cilium-dbg status`를 노드별로 |
 | AC-2.4 | MUST | `cilium connectivity test` 전 항목 통과(skip 항목은 사유 기록) | 실행 로그 |
 | AC-2.5 | MUST | `hubble observe --last 50`이 relay를 통해 여러 노드의 플로우 반환 | hubble CLI(port-forward) |
-| AC-2.6 | MUST | GatewayClass `cilium` Accepted=True, CRD 버전 = v1.6.1 | `kubectl get gatewayclass`, CRD 어노테이션 |
+| AC-2.6 | MUST | GatewayClass `cilium` Accepted=True, CRD 7종의 `bundle-version` 어노테이션 = `versions.env`의 `GATEWAY_API_VERSION`(v1.6.3), `channel` = standard | `kubectl get gatewayclass`, CRD 어노테이션 |
 | AC-2.7 | MUST | CoreDNS Ready, 테스트 Pod에서 `kubernetes.default` 해석 성공 | 임시 Pod nslookup |
 | AC-2.8 | MUST | hubble-relay/ui, cilium-operator가 infra 노드에 배치 | Pod nodeName |
 
@@ -916,3 +914,4 @@ COULD 항목 중 FR-NET-05, FR-L7-08, FR-ISO-11은 채택 시 AC를 추가한다
 |---|---|---|
 | 1.0-draft | 2026-11-14 | 최초 작성 |
 | 1.0-draft+1 | 2026-11-25 | §2.3·§5.1: Loki/Tempo 차트 저장소를 grafana-community로 변경(사용자 승인, ADR-0009) |
+| 1.0-draft+2 | 2026-11-26 | §5.1·§6.2(AC-2.6): Gateway API CRD v1.6.1 → v1.6.3(Cilium 1.20.5 문서 기준, Phase 0 편차 반영). §5.3: 차트 1.20.5에 없는 `externalIPs.enabled` 삭제(KPR=true면 externalIPs 항상 활성) — 사용자 승인 |
