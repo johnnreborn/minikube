@@ -1,0 +1,60 @@
+# kind cluster "boutique" (SPEC §5.2, ARCHITECTURE §4). CNI and kube-proxy are intentionally absent:
+# Cilium replaces both (Phase 2). Nodes stay NotReady until then.
+# kubeadm v1beta4: extraArgs are `- name:/value:` lists, not maps (ARCHITECTURE §15-1).
+# The node image must equal KIND_NODE_IMAGE in versions.env (scripts/check-versions.sh enforces it).
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: boutique
+networking:
+  disableDefaultCNI: true
+  kubeProxyMode: "none"
+  podSubnet: "10.244.0.0/16"
+  serviceSubnet: "10.96.0.0/16"
+nodes:
+  - role: control-plane
+    image: kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed
+    kubeadmConfigPatches:
+      - |
+        kind: ClusterConfiguration
+        apiVersion: kubeadm.k8s.io/v1beta4
+        controllerManager:
+          extraArgs:
+            - name: bind-address
+              value: "0.0.0.0"
+        scheduler:
+          extraArgs:
+            - name: bind-address
+              value: "0.0.0.0"
+        etcd:
+          local:
+            extraArgs:
+              - name: listen-metrics-urls
+                value: "http://0.0.0.0:2381"
+  - role: worker                       # boutique-worker  (infra pool)
+    image: kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed
+    labels:
+      node.boutique.io/pool: infra
+    kubeadmConfigPatches:
+      - |
+        kind: JoinConfiguration
+        apiVersion: kubeadm.k8s.io/v1beta4
+        nodeRegistration:
+          taints:
+            - key: node.boutique.io/dedicated
+              value: infra
+              effect: NoSchedule
+  - role: worker                       # boutique-worker2 (app, zone-a)
+    image: kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed
+    labels:
+      node.boutique.io/pool: app
+      topology.kubernetes.io/zone: zone-a
+  - role: worker                       # boutique-worker3 (app, zone-b)
+    image: kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed
+    labels:
+      node.boutique.io/pool: app
+      topology.kubernetes.io/zone: zone-b
+  - role: worker                       # boutique-worker4 (app, zone-c)
+    image: kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed
+    labels:
+      node.boutique.io/pool: app
+      topology.kubernetes.io/zone: zone-c
