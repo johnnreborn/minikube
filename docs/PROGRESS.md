@@ -5,10 +5,9 @@
 
 ## 현재 상태
 
-- 현재 Phase: **3 — GitOps 부트스트랩** (⬜ 대기, Phase 2 ✅ 완료 2026-11-26)
-- 다음 행동: 사용자 확인 후 Phase 3 착수 (`/phase 3`). 클러스터 `boutique` 5노드 Ready, Cilium 1.20.5(helm 설치, Phase 3에서 Argo CD가 인수) 가동 중
-- Phase 3 사전 준비: `.env`가 아직 없음 — `.env.example`을 복사해 `GITHUB_TOKEN`(비공개 저장소면 Contents read-only)·`GRAFANA_ADMIN_PASSWORD` 입력, `origin`으로 push 가능해야 함
-- 차단 요소: 없음
+- 현재 Phase: **4 — L4 로드밸런싱** (⬜ 대기, Phase 3 ✅ 완료 2026-11-26)
+- 다음 행동: 사용자 확인 후 Phase 4 착수 (`/phase 4`). 이제 클러스터 변경은 commit + push로만 반영된다(Argo CD가 `origin/main`을 본다). Cilium은 수동 sync
+- 차단 요소: 없음. 알려진 환경 문제: 외부 인터넷 HTTPS 간헐 멈춤(WSL VM 밖, 편차 참조) — AC-2.4처럼 외부 대상에 의존하는 검증이 간헐 실패할 수 있음
 - SPEC §10 Q1~Q6: 사용자가 기본값 승인(2026-11-25)
 
 ## Phase 현황
@@ -18,7 +17,7 @@
 | 0 | 준비 | ✅ 완료 | 6/6 | – | `phase-0-done` | 2026-11-25 |
 | 1 | 멀티노드 클러스터 | ✅ 완료 | 5/5 | 1/1 | `phase-1-done` | 2026-11-25 |
 | 2 | CNI (Cilium) | ✅ 완료 | 8/8 | – | `phase-2-done` | 2026-11-26 |
-| 3 | GitOps 부트스트랩 | ⬜ | 0/9 | – | | |
+| 3 | GitOps 부트스트랩 | ✅ 완료 | 9/9 | – | `phase-3-done` | 2026-11-26 |
 | 4 | L4 로드밸런싱 | ⬜ | 0/4 | 0/2 | | |
 | 5 | Online Boutique | ⬜ | 0/8 | 0/1 | | |
 | 6 | L7 Gateway API | ⬜ | 0/9 | 0/1 | | |
@@ -61,6 +60,18 @@
 | 2026-11-26 | 2 | 테스트 하네스 버그 2건 수정: `test_pod`의 JSON merge override가 `--command`를 지움(→ strategic), `_pf`의 port-forward가 서브셸이라 정리되지 않고 남음(→ PID 파일을 EXIT trap이 정리) | Phase 0에서 작성 후 Phase 2에서 처음 실행되며 발견 |
 | 2026-11-26 | 2 | 벤더링한 Gateway API CRD 7개는 yamllint 대상에서 제외, 대신 `check-versions.sh`가 CRD 7종 존재와 `bundle-version`·`channel` 어노테이션을 `versions.env`와 비교(음성 사례 확인) | 업스트림 파일은 수정하지 않음(160자 초과 줄, `--strict` lint) |
 | 2026-11-26 | 2 | 절차 누락: `feat` 커밋 3건(CRD 벤더링, Cilium values, `cni.sh`)을 커밋 직전 `/verify` 없이 만듦(커밋 전 확인은 `make lint` 등). 이후 커밋된 HEAD에서 `/verify 2` 실행 | 이후 코드·설정 커밋은 직전에 `/verify` 실행 |
+| 2026-11-26 | 3 | GitOps 저장소는 **공개**(`GITHUB_TOKEN` 비움). SPEC Q1 기본값(비공개 + read-only 토큰)과 다름 → 커밋되는 모든 내용이 공개됨. 시크릿은 Git 밖(`.env` → 부트스트랩 Secret), lint·AC-3.7의 gitleaks로 매번 확인 | 사용자 저장소 설정(공개, `origin`은 SSH). 비공개로 바꾸면 `.env`에 토큰만 넣고 `make gitops-bootstrap` 재실행 |
+| 2026-11-26 | 3 | **helm v3.22.1 → v4.2.1**, `versions.env`에 `ARGOCD_BUNDLED_HELM_VERSION` 추가, `check-versions`가 두 값의 일치를 강제. Phase 0 편차 행의 "Argo CD 내장 helm과 같은 v3"는 **틀린 판단이었음**(Argo CD v3.5.7 repo-server의 helm은 v4.2.1, `hack/tool-versions.sh`) | 첫 부트스트랩에서 인수 가드가 멈춤: helm v3은 차트 기본값 `k8s.apiServerURLs: ~`(null)을 유지해 cilium DaemonSet init 컨테이너에 `--k8s-api-server-urls=`를 렌더, helm v4는 null 키를 버림 → 그대로 sync하면 cilium Pod 전부 재시작(AC-3.2 위반). 46개 리소스 중 비메타데이터 차이는 이 한 줄뿐 |
+| 2026-11-26 | 3 | **클러스터 재구축**(사용자 승인: `make down` → `make up`). helm v4로 Cilium을 다시 설치한 뒤 인수 → diff는 추적 어노테이션뿐(46개 리소스), cilium Pod 13개의 UID·restartCount 불변 | 값 변경만으로는 기존 클러스터(helm v3 렌더)와 Argo CD 렌더를 같게 만들 수 없음. Phase 1·2 재검증: Phase 1 5/5+1/1 PASS, Phase 2 7/8(AC-2.4, 아래) |
+| 2026-11-26 | 3 | 부트스트랩 helm 설치는 `--wait=legacy` | helm v4 기본 `--wait`(watcher)가 hook 리소스마다 `--timeout` 전체를 기다림. Argo CD 차트의 redis-secret-init hook(SA·Role·RoleBinding·Job)으로 설치가 **약 40분** 멈춤(10분 × 4). 임시 차트로 재현: `--timeout 20s`에서 watcher 88초, legacy 4초, hookOnly 3초. **수정 후 전체 부트스트랩은 아직 실행 전**(Phase 9 재구축에서 확인) |
+| 2026-11-26 | 3 | Argo CD: dex·notifications 비활성, `resource.exclusions`는 차트 기본값 유지 | SSO 없음, 외부 알림 없음(Q6). 차트 기본값이 이미 CiliumIdentity·CiliumEndpoint·CiliumEndpointSlice를 제외(Cilium 문서 argocd-issues와 일치) — 키를 덮어쓰면 다른 기본 제외가 사라짐 |
+| 2026-11-26 | 3 | root가 `gitops/projects/*.yaml`도 관리(AppProject도 Git 소유, FR-GIT-01). 부트스트랩은 AppProject가 없을 때만 생성 | 매번 kubectl apply하면 client-side 3-way merge가 Argo CD의 tracking 어노테이션을 지움 |
+| 2026-11-26 | 3 | CRD 앱(gateway-api-crds, prometheus-operator-crds): `ServerSideApply=true`, `automated.prune=false` + CRD마다 `argocd.argoproj.io/sync-options: Prune=false`(kustomize `commonAnnotations` / 차트 `crds.annotations`). `argocd` 앱도 SSA | Argo CD에는 앱 단위 `Prune=false` 옵션이 없음. ApplicationSet CRD 1.4 MB, prometheus-operator CRD 4.6 MB → client-side apply 한도 초과 |
+| 2026-11-26 | 3 | 추가 파일: argocd CLI(`install-tools.sh`, `cli_checksums.txt` 검증), `tests/fixtures/appproject-deny/`(§11에 없음, AC-3.6 전용) | SPEC §2.2의 선택 도구(`--core`), Cilium 인수 diff·sync에 사용 |
+| 2026-11-26 | 3 | `tests/phase-3.sh`의 AC-3.5·3.8은 `main`에 probe 커밋을 push하고 revert(실행마다 커밋 4개 추가). 작업 트리 clean + HEAD == origin일 때만 실행, 중단 시 EXIT trap이 revert·push. AC-3.3은 cilium 마지막 sync 후 ≥10분·≥20분 시점에 각각 그 이후의 reconciliation 결과를 확인 | SPEC AC-3.5 "커밋 2회 + 확인". 실행 순서는 AC-3.3 대기가 Git 왕복과 겹치도록 조정 |
+| 2026-11-26 | 2·3 | **AC-2.4 외부 HTTPS 실패 원인 조사(패킷 캡처)**: Phase 3 커밋 전 회귀(`T173936Z`)와 재구축 후(`T195038Z`)에도 FAIL — 지금까지 4회 중 3회 FAIL, 매번 Cloudflare 대상 동작 1~2건. 노드(worker2)와 WSL 호스트에서 동시 캡처하며 Pod → 1.1.1.1/1.0.0.1 HTTPS 880회 → 7회 실패, 7건 모두 Pod가 보낸 패킷은 전부 WSL eth0 밖으로 나갔고 WSL eth0에 도착한 패킷은 전부 Pod에 도달. 서버의 FIN은 `ack 1543`(ClientHello 이후 바이트 미수신). 실패는 수 초~35초 구간에 몰림 | **손실 위치는 WSL VM 밖**(Windows NAT·보안 소프트웨어·VPN·공유기·ISP·Cloudflare 중 하나, 미특정). Cilium·Docker·kind 구간 손실 0. 사용자 결정: 기록하고 Phase 3 계속. 기준·대상·플래그는 바꾸지 않음. Phase 2의 ✅는 당시 판정 그대로 |
+| 2026-11-26 | 3 | 커밋 직전 `/verify`는 Phase 1·2 회귀로 실행 | Phase 3 변경은 push 전에는 클러스터에 반영되지 않아 검증할 수 없음 |
+| 2026-11-26 | 3 | `make lint`의 helm template이 `argoproj.github.io` 차트 인덱스 타임아웃으로 1회 실패 → 재실행 통과 | 일시적 외부 네트워크(위 외부 HTTPS 문제와 같은 경로일 수 있음) |
 
 ## 세션 로그
 
@@ -70,3 +81,4 @@
 - 2026-11-25 Phase 0 2차 세션: 사용자가 `install-system.sh` 실행(첫 실행은 pipefail+`grep -q` SIGPIPE 버그로 docker 설치 전 종료 → 수정 후 재실행), WSL 메모리 20GB 반영(docker 23.5 GiB), inotify 512. `make preflight` 통과(16 CPU / 23.5 GiB / 951 GB), `make lint` 통과. 6개 논리 커밋 후 `make verify-phase N=0` → **MUST 6/6 PASS** (AC-0.1~0.6, SKIP 0, FAIL 0). 로그: `tests/results/phase-0-20261125T133002Z.log`(gitignored). 남은 리스크: 메모리 23.5 GiB는 권장(32 GiB) 미만 — Phase 7·9에서 requests 합계(AC-9.7)와 OOM 관찰 필요; Tempo 3.x values 키는 Phase 7에서 재검증; arm64 호스트는 Boutique 이미지가 amd64뿐.
 - 2026-11-25 Phase 1: `bootstrap/kind/cluster.yaml`, `cluster-up.sh`(멱등), `down.sh`(확인 필수, 실행하지 않음), `tests/phase-1.sh` 작성. `make cluster-up` 최초 실행 약 71초(노드 이미지 pull 포함), 재실행은 모두 "already exists". `make verify-phase N=1` → 첫 실행 AC-1.2 FAIL(NotReady 조건 taint, 위 편차 참조) → 테스트 정의 수정 후 **MUST 5/5, SHOULD 1/1 PASS**. 로그: `tests/results/phase-1-20261125T133543Z.log`. 남은 리스크: 노드는 NotReady로 대기 중이며 Phase 2에서 Cilium이 Ready로 전환해야 함; Cilium 설치 시 `k8sServiceHost: boutique-control-plane`(노드 이름 DNS) 해석을 Phase 2에서 확인.
 - 2026-11-26 Phase 2: `platform/gateway-api-crds/`(v1.6.3 standard 7종), `platform/cilium/values.yaml`, `bootstrap/scripts/cni.sh`, `tests/phase-2.sh` 작성. `make cni` 1차 성공(helm 시작 → `cilium status` OK·전 노드 Ready까지 160초), 2차는 멱등(2초, Cilium Pod 이름·재시작 수 불변). `k8sServiceHost: boutique-control-plane` 해석 정상. `make verify-phase N=2`: 1차 MUST 7/8(AC-2.4, 위 편차), 2차 **MUST 8/8 PASS**(FAIL 0, SKIP 0). 로그: `tests/results/phase-2-20261125T162757Z.log`. 남은 리스크: ① 외부 대상 HTTPS 간헐 무응답 — 이후 외부 통신을 쓰는 테스트·이미지 pull에서 같은 증상 가능, ② `cni.sh`의 "Argo CD가 Cilium을 관리하면 건너뜀" 분기와 "CRD 후설치 시 operator 재시작" 분기는 실행된 적 없음(전자는 Phase 3에서 확인), ③ hubble-relay가 설치 직후 1회 재시작(peer 서비스 준비 전), 이후 추가 없음, ④ Cilium 롤백은 클러스터 재생성(`make down`은 사용자 확인 필요). 현재 노드 컨테이너 메모리 합계 약 4.6 GiB / 23.5 GiB.
+- 2026-11-26 Phase 3: `platform/argocd/values.yaml`, `platform/namespaces/`, `gitops/{root.yaml,projects/,apps/platform/}`(자식 앱 5개), `bootstrap/scripts/{gitops-bootstrap,wait-sync}.sh`, `tests/phase-3.sh` 작성, argocd CLI 추가. 첫 `make gitops-bootstrap`은 Cilium 인수 가드에서 멈춤(helm v3/v4 렌더 차이, 위 편차) → helm v4.2.1로 핀하고 사용자 승인 후 클러스터 재구축(`make up` 46분, 이 중 약 40분이 helm v4 hook 대기 → `--wait=legacy`로 수정). 재구축 후 인수: diff는 추적 메타데이터뿐, cilium Pod 불변. `make wait-sync` 통과(6개 앱 Synced/Healthy at `690fc7c`). `make verify-phase N=3` → **MUST 9/9 PASS**(FAIL 0, SKIP 0), 로그 `tests/results/phase-3-20261125T201309Z.log`. probe 커밋 4개(`90e141c`..`b4e0d93`)는 모두 revert됨. 남은 리스크: ① 외부 HTTPS 간헐 멈춤(AC-2.4 4회 중 3회 FAIL) — 환경 문제, Phase 9 `verify-all`에도 영향, ② `--wait=legacy` 수정 후의 전체 부트스트랩은 아직 실행 전, ③ 테스트 로그는 PASS인 AC의 세부 출력(선택 시간 등)을 남기지 않음, ④ Argo CD 관리자 초기 비밀번호는 `argocd-initial-admin-secret`(교체 권장, ARCHITECTURE §13), ⑤ Phase 3 검증은 실행마다 `main`에 커밋 4개를 추가함.
