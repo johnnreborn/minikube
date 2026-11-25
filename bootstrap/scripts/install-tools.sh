@@ -118,8 +118,19 @@ install_hubble() {
   github_tar hubble "$HUBBLE_CLI_VERSION" cilium/hubble "$HUBBLE_CLI_VERSION" "hubble-linux-${ARCH}.tar.gz" hubble
 }
 
+# argocd CLI (SPEC §2.2, optional): used in --core mode for the Cilium adoption diff/sync (SPEC §5.3)
+install_argocd() {
+  installed_ok argocd "$ARGOCD_VERSION" argocd version --client --short && { ok "argocd $ARGOCD_VERSION already installed"; return; }
+  local a="argocd-linux-${ARCH}" base="https://github.com/argoproj/argo-cd/releases/download/${ARGOCD_VERSION}"
+  local d; d=$(curl -fsSL --retry 3 "$base/cli_checksums.txt" | awk -v a="$a" '$2 == a {print $1}')
+  [[ -n "$d" ]] || die "no checksum for $a in cli_checksums.txt"
+  fetch "$base/$a" "$TMP/argocd"
+  verify_sha256 "$TMP/argocd" "$d"
+  place "$TMP/argocd" argocd
+}
+
 install_kind; install_kubectl; install_helm; install_kustomize
-install_yq; install_kubeconform; install_gitleaks; install_cilium_cli; install_hubble
+install_yq; install_kubeconform; install_gitleaks; install_cilium_cli; install_hubble; install_argocd
 
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
