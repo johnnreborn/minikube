@@ -1,0 +1,47 @@
+# PSA levels and Gateway route access per ARCHITECTURE §12. `gateway-access: "true"` is what the shared Gateway's
+# allowedRoutes selector matches (ARCHITECTURE §7.2). kube-system is not managed here.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: argocd
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/warn: restricted
+    gateway-access: "true"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cert-manager
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gateway
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability
+  labels:
+    pod-security.kubernetes.io/enforce: privileged   # node-exporter, Alloy hostPath
+    gateway-access: "true"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: boutique
+  labels:
+    pod-security.kubernetes.io/enforce: baseline     # -> restricted in Phase 8
+    gateway-access: "true"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: l4-test
+  labels:
+    pod-security.kubernetes.io/enforce: restricted

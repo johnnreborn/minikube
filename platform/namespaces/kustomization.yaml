@@ -1,0 +1,6 @@
+# Namespaces owned by the `namespaces` Application (ARCHITECTURE §12). Applications never create namespaces
+# themselves (syncOption CreateNamespace=false), so PSA and `gateway-access` labels have a single owner.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespaces.yaml
