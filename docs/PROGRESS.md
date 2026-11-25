@@ -5,8 +5,8 @@
 
 ## 현재 상태
 
-- 현재 Phase: **1 — 멀티노드 클러스터** (⬜ 대기, Phase 0 ✅ 완료 2026-11-25)
-- 다음 행동: 사용자 확인 후 Phase 1 착수 (`/phase 1`)
+- 현재 Phase: **2 — CNI (Cilium)** (⬜ 대기, Phase 1 ✅ 완료 2026-11-25)
+- 다음 행동: 사용자 확인 후 Phase 2 착수 (`/phase 2`). 클러스터 `boutique`(5노드)가 NotReady 상태로 가동 중 — Cilium 설치 전까지 정상
 - 차단 요소: 없음
 - SPEC §10 Q1~Q6: 사용자가 기본값 승인(2026-11-25)
 
@@ -15,7 +15,7 @@
 | Phase | 이름 | 상태 | MUST | SHOULD | 태그 | 완료일 |
 |---|---|---|---|---|---|---|
 | 0 | 준비 | ✅ 완료 | 6/6 | – | `phase-0-done` | 2026-11-25 |
-| 1 | 멀티노드 클러스터 | ⬜ | 0/5 | 0/1 | | |
+| 1 | 멀티노드 클러스터 | ✅ 완료 | 5/5 | 1/1 | `phase-1-done` | 2026-11-25 |
 | 2 | CNI (Cilium) | ⬜ | 0/8 | – | | |
 | 3 | GitOps 부트스트랩 | ⬜ | 0/9 | – | | |
 | 4 | L4 로드밸런싱 | ⬜ | 0/4 | 0/2 | | |
@@ -52,6 +52,8 @@
 | 2026-11-25 | 0 | 도구 설치: 바이너리 9종은 체크섬 검증 후 `~/.local/bin`에 설치 완료(kind, kubectl, helm, kustomize, yq, kubeconform, gitleaks, cilium, hubble). docker·make·jq·yamllint·inotify는 사용자가 sudo로 설치 완료(2026-11-25). `install-system.sh`의 pipefail+grep -q SIGPIPE 버그를 수정 후 재실행 | 사용자 결정(제가 스크립트 작성, 사용자가 sudo 실행) |
 | 2026-11-25 | 0 | 이 저장소에 git `user.name/email`이 없어 커밋 실패 → 사용자 선택으로 초기 커밋과 같은 작성자를 **저장소 로컬**(`--local`)에만 설정. 전역 설정은 변경하지 않음 | 사용자 결정 |
 | 2026-11-25 | 0 | 프로젝트 루프(커밋 → verify)에 맞춰 verify 전에 커밋함: AC-0.6이 clean 작업 트리를 요구 | SPEC §6.0 AC-0.6 |
+| 2026-11-25 | 1 | AC-1.2 테스트는 노드 라이프사이클 조건 taint(`node.kubernetes.io/not-ready`, `unreachable`)를 비교에서 제외. 그 외 taint는 ARCHITECTURE §4와 정확히 일치해야 하며 추가 taint는 FAIL(임시 taint로 음성 확인함) | 노드가 NotReady인 동안(CNI 없음) 컨트롤러가 자동 부착하는 조건 taint라 배치 설계 대상이 아님. 첫 실행에서 이 때문에 FAIL → 기준 완화가 아니라 비교 대상 정의를 바로잡음 |
+| 2026-11-25 | 1 | 노드 IP는 `.2`부터 순차 할당이 아님(control-plane 172.30.0.4, worker4 .2 …). 노드 IP를 가정하는 코드·매니페스트 금지 | Docker 병렬 컨테이너 생성 순서. LB-IPAM 풀(.250.x)과는 충돌 없음 |
 
 ## 세션 로그
 
@@ -59,3 +61,4 @@
 
 - 2026-11-25 Phase 0 1차 세션: 버전 조사·핀(`versions.env`), 골격, `preflight.sh`, `tests/lib.sh`, `scripts/{lint,check-versions}.sh`, `Makefile`, `tests/phase-0.sh` 작성. `make`가 없어 스크립트를 직접 실행해 검증(lint 통과: 빈 트리 + 임시 사본의 kustomize/helm/kubeconform/드리프트/gitleaks 양·음성 사례). AC 판정은 sudo 설치 후 `make verify-phase N=0`로 수행 예정 — 아직 미판정.
 - 2026-11-25 Phase 0 2차 세션: 사용자가 `install-system.sh` 실행(첫 실행은 pipefail+`grep -q` SIGPIPE 버그로 docker 설치 전 종료 → 수정 후 재실행), WSL 메모리 20GB 반영(docker 23.5 GiB), inotify 512. `make preflight` 통과(16 CPU / 23.5 GiB / 951 GB), `make lint` 통과. 6개 논리 커밋 후 `make verify-phase N=0` → **MUST 6/6 PASS** (AC-0.1~0.6, SKIP 0, FAIL 0). 로그: `tests/results/phase-0-20261125T133002Z.log`(gitignored). 남은 리스크: 메모리 23.5 GiB는 권장(32 GiB) 미만 — Phase 7·9에서 requests 합계(AC-9.7)와 OOM 관찰 필요; Tempo 3.x values 키는 Phase 7에서 재검증; arm64 호스트는 Boutique 이미지가 amd64뿐.
+- 2026-11-25 Phase 1: `bootstrap/kind/cluster.yaml`, `cluster-up.sh`(멱등), `down.sh`(확인 필수, 실행하지 않음), `tests/phase-1.sh` 작성. `make cluster-up` 최초 실행 약 71초(노드 이미지 pull 포함), 재실행은 모두 "already exists". `make verify-phase N=1` → 첫 실행 AC-1.2 FAIL(NotReady 조건 taint, 위 편차 참조) → 테스트 정의 수정 후 **MUST 5/5, SHOULD 1/1 PASS**. 로그: `tests/results/phase-1-20261125T133543Z.log`. 남은 리스크: 노드는 NotReady로 대기 중이며 Phase 2에서 Cilium이 Ready로 전환해야 함; Cilium 설치 시 `k8sServiceHost: boutique-control-plane`(노드 이름 DNS) 해석을 Phase 2에서 확인.
