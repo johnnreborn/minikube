@@ -5,15 +5,16 @@
 
 ## 현재 상태
 
-- 현재 Phase: **0 — 준비**
-- 다음 행동: SPEC §10 미결 사항 사용자 확인 → Phase 0 착수
-- 차단 요소: 없음
+- 현재 Phase: **0 — 준비** (🔄 진행 중)
+- 다음 행동: 커밋 → `make verify-phase N=0` → MUST 6/6 PASS 시 PROGRESS 갱신 + `phase-0-done` 태그
+- 차단 요소: 없음 (sudo 설치·WSL 메모리·inotify 해결, preflight 통과, Loki/Tempo 차트 저장소 변경 승인됨)
+- SPEC §10 Q1~Q6: 사용자가 기본값 승인(2026-11-25)
 
 ## Phase 현황
 
 | Phase | 이름 | 상태 | MUST | SHOULD | 태그 | 완료일 |
 |---|---|---|---|---|---|---|
-| 0 | 준비 | ⬜ 대기 | 0/6 | – | | |
+| 0 | 준비 | 🔄 진행 중 | 0/6 | – | | |
 | 1 | 멀티노드 클러스터 | ⬜ | 0/5 | 0/1 | | |
 | 2 | CNI (Cilium) | ⬜ | 0/8 | – | | |
 | 3 | GitOps 부트스트랩 | ⬜ | 0/9 | – | | |
@@ -42,8 +43,16 @@
 
 | 날짜 | Phase | 내용 | 근거 / 관련 ADR |
 |---|---|---|---|
-| | | | |
+| 2026-11-25 | 0 | Gateway API CRD v1.6.1 → **v1.6.3** (standard 채널, CRD 7종) | Cilium 1.20.5 문서(conf.py)가 v1.6.3을 지정. 같은 마이너 패치, SPEC §5.1 원칙(R3: Cilium 요구 버전 그대로) |
+| 2026-11-25 | 0 | Cilium 1.20.5, Argo CD 차트 10.11.7(앱 v3.5.7), cert-manager v1.21.3, kps 93.3.1 + CRDs 33.0.2(operator v0.95.2), Alloy 1.16.0, OTel 차트 0.178.3(collector 0.163.2), Helm v3.22.1 핀 | 각 줄의 출처 URL은 `versions.env`. Argo CD 3.5.9 앱은 있으나 차트가 아직 3.5.7까지(Q5: 3.5.x 유지). Helm은 Argo CD 내장 helm과 같은 v3 |
+| 2026-11-25 | 0 | **Loki·Tempo 차트 저장소를 grafana-community로 변경(승인됨, SPEC 반영)**(Loki 21.3.1/3.7.10, Tempo 3.2.1/3.1.1). SPEC §2.3·§5.1 갱신 | `grafana/tempo` deprecated, `grafana/loki`는 GEL 전용(R12). ADR-0009(Accepted) |
+| 2026-11-25 | 0 | Online Boutique v0.10.7 이미지는 **linux/amd64 단일 아키텍처**, 레지스트리 `us-central1-docker.pkg.dev/online-boutique-ci/microservices-demo`. arm64 호스트는 AC-0.5 실패 | 업스트림 v0.10.7 `release/kubernetes-manifests.yaml`과 manifest config 확인. 이 호스트는 x86_64라 해당 없음 |
+| 2026-11-25 | 0 | 업스트림 `redis:alpine`은 부유 태그 → `REDIS_IMAGE=redis:8.12.0-alpine`로 핀, Phase 5 overlay에서 교체 필요 | CLAUDE.md "latest 금지" |
+| 2026-11-25 | 0 | AC-0.3 해석: 디렉터리는 §11 전부, 파일은 Phase 0 소유분만 검사(cluster.yaml, phase-N.sh 등은 해당 Phase가 검사). §11에 없는 추가 파일: `scripts/{lint,check-versions,verify-phase}.sh`, `bootstrap/scripts/install-{system,tools}.sh`, `.yamllint`, `.gitleaks.toml` | 빈 껍데기 파일을 만들어 AC만 통과시키는 것을 피함 |
+| 2026-11-25 | 0 | 도구 설치: 바이너리 9종은 체크섬 검증 후 `~/.local/bin`에 설치 완료(kind, kubectl, helm, kustomize, yq, kubeconform, gitleaks, cilium, hubble). docker·make·jq·yamllint·inotify는 사용자가 sudo로 설치 완료(2026-11-25). `install-system.sh`의 pipefail+grep -q SIGPIPE 버그를 수정 후 재실행 | 사용자 결정(제가 스크립트 작성, 사용자가 sudo 실행) |
 
 ## 세션 로그
 
 <!-- 형식: ### YYYY-MM-DD Phase N — 요약 / 실행한 검증 / 결과(PASS x, FAIL y) / 다음 행동 -->
+
+- 2026-11-25 Phase 0 1차 세션: 버전 조사·핀(`versions.env`), 골격, `preflight.sh`, `tests/lib.sh`, `scripts/{lint,check-versions}.sh`, `Makefile`, `tests/phase-0.sh` 작성. `make`가 없어 스크립트를 직접 실행해 검증(lint 통과: 빈 트리 + 임시 사본의 kustomize/helm/kubeconform/드리프트/gitleaks 양·음성 사례). AC 판정은 sudo 설치 후 `make verify-phase N=0`로 수행 예정 — 아직 미판정.

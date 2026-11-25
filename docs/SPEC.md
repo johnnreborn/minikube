@@ -65,7 +65,7 @@ yamllint, kubeconform, gitleaks(권장), argocd CLI(선택, `--core` 모드).
 ### 2.3 외부 의존
 
 - **GitOps 저장소**: 사용자의 GitHub 저장소(`GITOPS_REPO_URL`, 기본 브랜치 `main`). 비공개면 `GITHUB_TOKEN`(read 권한) 필요.
-- 헬름 저장소/레지스트리: cilium, argo, jetstack, prometheus-community, grafana, open-telemetry.
+- 헬름 저장소/레지스트리: cilium, argo, jetstack, prometheus-community, grafana(Alloy), **grafana-community(Loki, Tempo — ADR-0009)**, open-telemetry.
 - 이미지: Online Boutique(Artifact Registry), redis(Docker Hub), 기타 차트 이미지.
 
 ### 2.4 설정 파일
@@ -214,8 +214,8 @@ yamllint, kubeconform, gitleaks(권장), argocd CLI(선택, `--core` 모드).
 | Argo CD | 3.5.x 최신 패치 (argo/argo-cd 차트 대응 버전) | 3.5 GA 2026-08. 3.6 GA 시 채택 여부는 Phase 0 판단 |
 | cert-manager | 최신 stable v1.x | |
 | kube-prometheus-stack / prometheus-operator-crds | 최신 stable (서로 호환되는 조합) | CRD는 별도 차트로 관리 |
-| Loki | 3.x 최신 (SingleBinary) | |
-| Tempo | 최신 stable (monolithic) | 차트의 유지보수/폐기 상태 확인 |
+| Loki | 3.x 최신 (SingleBinary) | 차트는 `grafana-community` 저장소(OSS). `grafana/loki`는 GEL 전용 (ADR-0009) |
+| Tempo | 최신 stable (monolithic) | 차트는 `grafana-community` 저장소. `grafana/tempo`는 2026-01-30 이후 deprecated (ADR-0009). Tempo 3.x는 Phase 7에서 values 키 재검증 |
 | Grafana Alloy | 최신 stable | Promtail 사용 금지(EOL) |
 | OpenTelemetry Collector | contrib 배포판 최신 stable | spanmetrics connector 포함 |
 | Online Boutique | v0.10.x 최신 (작성 시점 v0.10.4 확인) | |
@@ -915,3 +915,4 @@ COULD 항목 중 FR-NET-05, FR-L7-08, FR-ISO-11은 채택 시 AC를 추가한다
 | 버전 | 날짜 | 내용 |
 |---|---|---|
 | 1.0-draft | 2026-11-14 | 최초 작성 |
+| 1.0-draft+1 | 2026-11-25 | §2.3·§5.1: Loki/Tempo 차트 저장소를 grafana-community로 변경(사용자 승인, ADR-0009) |

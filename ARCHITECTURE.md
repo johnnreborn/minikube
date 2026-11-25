@@ -466,3 +466,4 @@ online-boutique-platform/
 | 0006 | 관측 스택: kube-prometheus-stack + Loki/Alloy + Tempo/OTel + Hubble |
 | 0007 | Online Boutique 매니페스트 벤더링 + Kustomize overlay |
 | 0008 | 네트워크 정책: 표준 NP 기본 거부 + CNP 허용 + 감사→집행 |
+| 0009 | Loki·Tempo 차트는 grafana-community 저장소 사용 |
