@@ -1,0 +1,12 @@
+title = "online-boutique-platform gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "local-only, gitignored locations"
+paths = [
+  '''^\.env$''',
+  '''^tests/results/''',
+  '''^tests/\.cache/''',
+]

@@ -1,0 +1,19 @@
+extends: default
+ignore: |
+  apps/online-boutique/upstream/
+  tests/results/
+  tests/.cache/
+rules:
+  line-length:
+    max: 160
+    level: warning
+  document-start: disable
+  truthy:
+    allowed-values: ["true", "false"]
+    check-keys: false
+  comments:
+    min-spaces-from-content: 1
+  comments-indentation: disable
+  indentation:
+    spaces: consistent
+    indent-sequences: consistent

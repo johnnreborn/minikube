@@ -1,0 +1,26 @@
+# secrets / local config — never commit
+.env
+.env.*
+!.env.example
+kubeconfig
+*.kubeconfig
+.kube/
+*.key
+*.pem
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+
+# test output
+tests/results/
+tests/.cache/
+
+# misc
+*.log
+*.swp
+.DS_Store
+.venv/
+
+# Claude Code local settings
+.claude/settings.local.json
