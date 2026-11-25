@@ -1,8 +1,0 @@
-# AC-3.5 probe (tests/phase-3.sh): added and reverted by the acceptance test
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: ac-prune-probe
-  namespace: l4-test
-data:
-  created-by: tests/phase-3.sh
