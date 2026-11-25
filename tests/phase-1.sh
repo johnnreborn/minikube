@@ -29,18 +29,26 @@ check_nodes() {
 ac_check AC-1.1 "5 nodes registered (1 control-plane, 4 workers)" check_nodes
 
 # AC-1.2 ---------------------------------------------------------------------------------------
+# Taints placed by the node lifecycle controller (not-ready/unreachable) are conditions, not placement
+# design: they exist on every node while it is NotReady (no CNI until Phase 2) and vanish when Ready.
+# Any OTHER taint still has to match ARCHITECTURE §4 exactly.
+node_taints() {  # <node> → sorted "key=value:effect" lines without lifecycle condition taints
+  k get node "$1" -o jsonpath='{range .spec.taints[*]}{.key}={.value}:{.effect}{"\n"}{end}' |
+    grep -v -E '^node\.kubernetes\.io/(not-ready|unreachable)=' | sort
+}
+
 check_labels_taints() {
   local rc=0 n want pool zone taint got_pool got_zone got_taints
   # control plane: default taint only
   local cp; cp=$(k get nodes -l node-role.kubernetes.io/control-plane -o jsonpath='{.items[0].metadata.name}')
   [[ "$cp" == boutique-control-plane ]] || { echo "control-plane node is '$cp', want boutique-control-plane"; rc=1; }
-  got_taints=$(k get node "$cp" -o jsonpath='{range .spec.taints[*]}{.key}={.value}:{.effect}{"\n"}{end}')
+  got_taints=$(node_taints "$cp")
   [[ "$got_taints" == "node-role.kubernetes.io/control-plane=:NoSchedule" ]] || { echo "$cp taints: '$got_taints'"; rc=1; }
   for n in "${!WANT[@]}"; do
     IFS='|' read -r pool zone taint <<<"${WANT[$n]}"
     got_pool=$(k get node "$n" -o jsonpath='{.metadata.labels.node\.boutique\.io/pool}' 2>/dev/null) || { echo "node $n missing"; rc=1; continue; }
     got_zone=$(k get node "$n" -o jsonpath='{.metadata.labels.topology\.kubernetes\.io/zone}')
-    got_taints=$(k get node "$n" -o jsonpath='{range .spec.taints[*]}{.key}={.value}:{.effect}{"\n"}{end}')
+    got_taints=$(node_taints "$n")
     [[ "$got_pool" == "$pool" ]] || { echo "$n pool='$got_pool' want '$pool'"; rc=1; }
     [[ "${got_zone:--}" == "$zone" ]] || { echo "$n zone='${got_zone:--}' want '$zone'"; rc=1; }
     [[ "${got_taints:--}" == "$taint" ]] || { echo "$n taints='${got_taints:--}' want '$taint'"; rc=1; }
