@@ -1,0 +1,7 @@
+# AC-3.6 fixture: a cluster-scoped object that a temporary Application in the `apps` project tries to sync.
+# The AppProject must reject it, so this ClusterRole must never exist in the cluster. Not part of any real Application.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ac-test-appproject-deny
+rules: []
