@@ -1,0 +1,99 @@
+# Cilium base values (SPEC §5.3). Used verbatim by bootstrap/scripts/cni.sh (helm) and, from Phase 3, by the
+# Argo CD `cilium` Application. Chart version: versions.env CILIUM_CHART_VERSION.
+# Every key was checked against `helm show values cilium --version <pinned>` (Phase 2).
+# Feature layers live in values-*.yaml (values-monitoring.yaml is added in Phase 7, after the Prometheus Operator CRDs).
+
+# --- dataplane: no kube-proxy (kind kubeProxyMode: none). externalIPs are always enabled with KPR=true ----------
+kubeProxyReplacement: true
+k8sServiceHost: boutique-control-plane   # node name, resolved by Docker's embedded DNS on the kind-boutique network
+k8sServicePort: 6443
+ipam:
+  mode: kubernetes                       # per-node podCIDR (/24) from the kubeadm podSubnet 10.244.0.0/16
+routingMode: tunnel
+tunnelProtocol: vxlan
+loadBalancer:
+  algorithm: maglev
+
+# --- L4: LB-IPAM pool / L2 announcement policy are applied in Phase 4 (platform/cilium-lb) -------------------
+l2announcements:
+  enabled: true
+  leaseDuration: 3s
+  leaseRenewDeadline: 1s
+  leaseRetryPeriod: 200ms
+k8sClientRateLimit:                      # lease renewals raise API traffic
+  qps: 50
+  burst: 100
+
+# --- L7: Gateway API via the built-in Envoy (CRDs: platform/gateway-api-crds, installed before Cilium) ----------
+gatewayAPI:
+  enabled: true
+envoy:
+  enabled: true
+
+# Never re-enable audit mode to make a test pass (CLAUDE.md). Phase 8 uses it only for the documented audit window.
+policyAuditMode: false
+
+# --- placement: operator on the infra node. The default tolerations (control-plane, not-ready, ...) are kept
+#     because the operator must start while nodes are still NotReady ---------------------------------------------
+operator:
+  replicas: 1
+  nodeSelector:
+    kubernetes.io/os: linux
+    node.boutique.io/pool: infra
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+    - key: node-role.kubernetes.io/master
+      operator: Exists
+    - key: node-role.kubernetes.io/etcd
+      operator: Exists
+    - key: node.kubernetes.io/not-ready
+      operator: Exists
+    - key: node.cloudprovider.kubernetes.io/uninitialized
+      operator: Exists
+    - key: node.boutique.io/dedicated
+      operator: Equal
+      value: infra
+      effect: NoSchedule
+
+# --- Hubble --------------------------------------------------------------------------------------------------
+hubble:
+  enabled: true
+  relay:
+    enabled: true
+    nodeSelector:
+      kubernetes.io/os: linux
+      node.boutique.io/pool: infra
+    tolerations:
+      - key: node.boutique.io/dedicated
+        operator: Equal
+        value: infra
+        effect: NoSchedule
+  ui:
+    enabled: true
+    nodeSelector:
+      kubernetes.io/os: linux
+      node.boutique.io/pool: infra
+    tolerations:
+      - key: node.boutique.io/dedicated
+        operator: Equal
+        value: infra
+        effect: NoSchedule
+  tls:
+    auto:
+      method: cronJob                    # helm-generated certs change on every render -> permanent OutOfSync in Argo CD
+  metrics:
+    enableOpenMetrics: true              # required for httpV2 exemplars
+    enabled:
+      - dns
+      - drop
+      - tcp
+      - flow
+      - port-distribution
+      - icmp
+      - "policy:sourceContext=workload-name|reserved-identity;destinationContext=workload-name|reserved-identity"
+      - "httpV2:exemplars=true;labelsContext=source_namespace,source_workload,destination_namespace,destination_workload,traffic_direction"
+
+# agent metrics endpoint; the ServiceMonitor objects come with values-monitoring.yaml (Phase 7)
+prometheus:
+  enabled: true
