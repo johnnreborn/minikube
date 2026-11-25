@@ -49,7 +49,7 @@ else
   helm upgrade --install argocd argo-cd \
     --repo "$ARGOCD_CHART_REPO" --version "$ARGOCD_CHART_VERSION" \
     --kube-context "$CONTEXT" --namespace "$ARGO_NS" --create-namespace \
-    -f platform/argocd/values.yaml --wait --timeout 10m
+    -f platform/argocd/values.yaml --wait=legacy --timeout 10m   # helm v4 "watcher" waits --timeout per non-Job hook (redis-secret-init: 4 x 10 min)
   ok "Argo CD installed"
 fi
 

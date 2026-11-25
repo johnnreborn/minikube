@@ -55,7 +55,7 @@ start=$SECONDS
 helm upgrade --install "$RELEASE" cilium \
   --repo "$CILIUM_CHART_REPO" --version "$CILIUM_CHART_VERSION" \
   --kube-context "$CONTEXT" --namespace "$NAMESPACE" \
-  -f "$VALUES" --wait --timeout 10m
+  -f "$VALUES" --wait=legacy --timeout 10m   # helm v4: the default "watcher" strategy stalls --timeout per non-Job hook resource
 ok "helm release deployed in $((SECONDS - start))s"
 
 if [[ $release_existed == true && $gw_crd_existed == false ]]; then
