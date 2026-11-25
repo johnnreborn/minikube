@@ -4,7 +4,7 @@
 # values-monitoring.yaml (ServiceMonitors) is added in Phase 7.
 
 global:
-  domain: argocd.boutique.test           # served through the Gateway in Phase 6 (TLS terminated there)
+  domain: argocd.boutique.test # served through the Gateway in Phase 6 (TLS terminated there)
   # every component on the infra node (ARCHITECTURE §4)
   nodeSelector:
     kubernetes.io/os: linux
@@ -14,10 +14,9 @@ global:
       operator: Equal
       value: infra
       effect: NoSchedule
-
 configs:
   params:
-    server.insecure: true                # TLS ends at the Gateway (ARCHITECTURE §13)
+    server.insecure: true # TLS ends at the Gateway (ARCHITECTURE §13)
   cm:
     # app-of-apps: let sync waves wait for child Application health (removed from Argo CD core in 1.8).
     # Source: Argo CD docs, operator-manual/health.md "Argo CD App" (argoproj.io/Application).
@@ -38,6 +37,7 @@ configs:
     # CiliumIdentity / CiliumEndpoint / CiliumEndpointSlice (Cilium docs "argocd-issues"); overriding the key would
     # drop the other defaults (ARCHITECTURE §15-5).
 
+    ui.bannercontent: AC-3.8 self-management probe 20261125T202031Z
 # not used in this lab: no SSO (dex) and no external notification targets (SPEC §10 Q6)
 dex:
   enabled: false
