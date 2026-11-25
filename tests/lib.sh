@@ -6,7 +6,7 @@
 #   wait_for <timeout-s> <cmd...>           poll every 2s until cmd succeeds
 #   probe_curl <curl args...>               curl from a container on the kind-boutique network (outside view)
 #   debug_curl <ns> <pod> <container> <curl args...>   curl from an ephemeral container in the pod's netns (identity-preserving)
-#   test_pod <ns> <labels> <cmd...>         throwaway PSA-restricted pod running `sh -c cmd`
+#   test_pod <ns> <labels> <cmd...>         throwaway PSA-restricted pod running `sh -c cmd` (image: TEST_POD_IMAGE)
 #   prom_query / loki_query / tempo_search  query via a temporary port-forward
 #   hubble_expect <hubble-observe-filter> <VERDICT> [window]   assert a recent flow with that verdict exists
 #   suspend_app / resume_app <app>          freeze Argo CD reconciliation for fault injection (§7.4); restored by trap
@@ -72,9 +72,13 @@ ac_summary() {
 
 # ---- cleanup ---------------------------------------------------------------------------------
 declare -a AC_CLEANUPS=()
+PF_PIDS_FILE=$(mktemp "${TMPDIR:-/tmp}/ac-pf.XXXXXX")
 on_cleanup() { AC_CLEANUPS+=("$*"); }   # run in reverse order on exit
 _ac_cleanup() {
   local rc=$? i
+  # port-forwards started by _pf (it runs in a $(...) subshell, so it cannot register on_cleanup itself)
+  if [[ -s "$PF_PIDS_FILE" ]]; then xargs -r kill <"$PF_PIDS_FILE" >/dev/null 2>&1 || true; fi
+  rm -f "$PF_PIDS_FILE"
   for (( i=${#AC_CLEANUPS[@]}-1; i>=0; i-- )); do eval "${AC_CLEANUPS[$i]}" >/dev/null 2>&1 || true; done
   if have docker; then
     docker ps -aq --filter label=ac-test=true 2>/dev/null | xargs -r docker rm -f >/dev/null 2>&1 || true
@@ -122,24 +126,25 @@ debug_curl() {
 }
 
 # test_pod <ns> <labels k=v,k=v> <shell command>  → command stdout; pod is removed afterwards
-test_pod() {
-  local ns=$1 labels=$2 cmd=$3
+test_pod() {   # image: TEST_POD_IMAGE (default CURL_IMAGE)
+  local ns=$1 labels=$2 cmd=$3 image=${TEST_POD_IMAGE:-$CURL_IMAGE}
   local name; name="ac-test-$(date +%s)-$RANDOM"
-  kubectl -n "$ns" run "$name" --restart=Never --rm -i --quiet --image="$CURL_IMAGE" \
-    --labels="ac-test=true${labels:+,$labels}" \
-    --overrides='{"spec":{"securityContext":{"runAsNonRoot":true,"runAsUser":65534,"seccompProfile":{"type":"RuntimeDefault"}},"containers":[{"name":"'"$name"'","image":"'"$CURL_IMAGE"'","securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]}}}]}}' \
+  # strategic override: a (default) JSON merge would replace the container list and drop --command
+  kubectl -n "$ns" run "$name" --restart=Never --rm -i --quiet --image="$image" \
+    --labels="ac-test=true${labels:+,$labels}" --override-type=strategic \
+    --overrides='{"spec":{"securityContext":{"runAsNonRoot":true,"runAsUser":65534,"seccompProfile":{"type":"RuntimeDefault"}},"containers":[{"name":"'"$name"'","securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]}}}]}}' \
     --command -- sh -c "$cmd"
 }
 
 # ---- port-forward based queries --------------------------------------------------------------
-# _pf <ns> <svc> <remote-port> → echoes local port, forward is torn down by the EXIT trap
+# _pf <ns> <svc> <remote-port> → echoes local port, forward is torn down by the EXIT trap (pid list in $PF_PIDS_FILE)
 _pf() {
   local ns=$1 svc=$2 rport=$3 port
   port=$(python3 -I -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
   kubectl -n "$ns" port-forward "svc/$svc" "$port:$rport" >/dev/null 2>&1 &
-  local pid=$!
-  on_cleanup "kill $pid"
-  wait_for 20 curl -s -o /dev/null "http://127.0.0.1:$port/" || wait_for 5 bash -c "(exec 3<>/dev/tcp/127.0.0.1/$port) 2>/dev/null" || true
+  echo "$!" >>"$PF_PIDS_FILE"
+  # plain TCP connect: works for HTTP and gRPC (hubble-relay) endpoints alike
+  wait_for 20 bash -c "(exec 3<>/dev/tcp/127.0.0.1/$port) 2>/dev/null" || true
   echo "$port"
 }
 
