@@ -5,16 +5,16 @@
 
 ## 현재 상태
 
-- 현재 Phase: **0 — 준비** (🔄 진행 중)
-- 다음 행동: 커밋 → `make verify-phase N=0` → MUST 6/6 PASS 시 PROGRESS 갱신 + `phase-0-done` 태그
-- 차단 요소: 없음 (sudo 설치·WSL 메모리·inotify 해결, preflight 통과, Loki/Tempo 차트 저장소 변경 승인됨)
+- 현재 Phase: **1 — 멀티노드 클러스터** (⬜ 대기, Phase 0 ✅ 완료 2026-11-25)
+- 다음 행동: 사용자 확인 후 Phase 1 착수 (`/phase 1`)
+- 차단 요소: 없음
 - SPEC §10 Q1~Q6: 사용자가 기본값 승인(2026-11-25)
 
 ## Phase 현황
 
 | Phase | 이름 | 상태 | MUST | SHOULD | 태그 | 완료일 |
 |---|---|---|---|---|---|---|
-| 0 | 준비 | 🔄 진행 중 | 0/6 | – | | |
+| 0 | 준비 | ✅ 완료 | 6/6 | – | `phase-0-done` | 2026-11-25 |
 | 1 | 멀티노드 클러스터 | ⬜ | 0/5 | 0/1 | | |
 | 2 | CNI (Cilium) | ⬜ | 0/8 | – | | |
 | 3 | GitOps 부트스트랩 | ⬜ | 0/9 | – | | |
@@ -50,9 +50,12 @@
 | 2026-11-25 | 0 | 업스트림 `redis:alpine`은 부유 태그 → `REDIS_IMAGE=redis:8.12.0-alpine`로 핀, Phase 5 overlay에서 교체 필요 | CLAUDE.md "latest 금지" |
 | 2026-11-25 | 0 | AC-0.3 해석: 디렉터리는 §11 전부, 파일은 Phase 0 소유분만 검사(cluster.yaml, phase-N.sh 등은 해당 Phase가 검사). §11에 없는 추가 파일: `scripts/{lint,check-versions,verify-phase}.sh`, `bootstrap/scripts/install-{system,tools}.sh`, `.yamllint`, `.gitleaks.toml` | 빈 껍데기 파일을 만들어 AC만 통과시키는 것을 피함 |
 | 2026-11-25 | 0 | 도구 설치: 바이너리 9종은 체크섬 검증 후 `~/.local/bin`에 설치 완료(kind, kubectl, helm, kustomize, yq, kubeconform, gitleaks, cilium, hubble). docker·make·jq·yamllint·inotify는 사용자가 sudo로 설치 완료(2026-11-25). `install-system.sh`의 pipefail+grep -q SIGPIPE 버그를 수정 후 재실행 | 사용자 결정(제가 스크립트 작성, 사용자가 sudo 실행) |
+| 2026-11-25 | 0 | 이 저장소에 git `user.name/email`이 없어 커밋 실패 → 사용자 선택으로 초기 커밋과 같은 작성자를 **저장소 로컬**(`--local`)에만 설정. 전역 설정은 변경하지 않음 | 사용자 결정 |
+| 2026-11-25 | 0 | 프로젝트 루프(커밋 → verify)에 맞춰 verify 전에 커밋함: AC-0.6이 clean 작업 트리를 요구 | SPEC §6.0 AC-0.6 |
 
 ## 세션 로그
 
 <!-- 형식: ### YYYY-MM-DD Phase N — 요약 / 실행한 검증 / 결과(PASS x, FAIL y) / 다음 행동 -->
 
 - 2026-11-25 Phase 0 1차 세션: 버전 조사·핀(`versions.env`), 골격, `preflight.sh`, `tests/lib.sh`, `scripts/{lint,check-versions}.sh`, `Makefile`, `tests/phase-0.sh` 작성. `make`가 없어 스크립트를 직접 실행해 검증(lint 통과: 빈 트리 + 임시 사본의 kustomize/helm/kubeconform/드리프트/gitleaks 양·음성 사례). AC 판정은 sudo 설치 후 `make verify-phase N=0`로 수행 예정 — 아직 미판정.
+- 2026-11-25 Phase 0 2차 세션: 사용자가 `install-system.sh` 실행(첫 실행은 pipefail+`grep -q` SIGPIPE 버그로 docker 설치 전 종료 → 수정 후 재실행), WSL 메모리 20GB 반영(docker 23.5 GiB), inotify 512. `make preflight` 통과(16 CPU / 23.5 GiB / 951 GB), `make lint` 통과. 6개 논리 커밋 후 `make verify-phase N=0` → **MUST 6/6 PASS** (AC-0.1~0.6, SKIP 0, FAIL 0). 로그: `tests/results/phase-0-20261125T133002Z.log`(gitignored). 남은 리스크: 메모리 23.5 GiB는 권장(32 GiB) 미만 — Phase 7·9에서 requests 합계(AC-9.7)와 OOM 관찰 필요; Tempo 3.x values 키는 Phase 7에서 재검증; arm64 호스트는 Boutique 이미지가 amd64뿐.
