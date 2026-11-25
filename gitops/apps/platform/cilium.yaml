@@ -1,0 +1,30 @@
+# wave -2: Cilium, adopted from the Phase 2 helm install with the same chart version and values file (SPEC §5.3).
+# NO automated sync: the CNI is changed only after reviewing the diff, then syncing by hand.
+# ignoreDifferences is intentionally empty: hubble TLS uses method=cronJob, so no certificate is rendered by helm.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cilium
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  project: platform
+  sources:
+    - repoURL: https://helm.cilium.io
+      chart: cilium
+      targetRevision: 1.20.5
+      helm:
+        releaseName: cilium
+        valueFiles:
+          - $values/platform/cilium/values.yaml
+    - repoURL: https://github.com/johnnreborn/minikube
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true

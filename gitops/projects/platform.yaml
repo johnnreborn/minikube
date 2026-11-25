@@ -1,0 +1,26 @@
+# AppProject `platform` (ARCHITECTURE §10.3): platform components, cluster-scoped resources allowed.
+# sourceRepos = this GitOps repository + the pinned chart repositories of versions.env (checked by check-versions.sh).
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-5"
+spec:
+  description: Platform components (CNI, GitOps, CRDs, Gateway, PKI, observability, policies)
+  sourceRepos:
+    - https://github.com/johnnreborn/minikube
+    - https://helm.cilium.io
+    - https://argoproj.github.io/argo-helm
+    - https://charts.jetstack.io
+    - https://prometheus-community.github.io/helm-charts
+    - https://grafana-community.github.io/helm-charts
+    - https://grafana.github.io/helm-charts
+    - https://open-telemetry.github.io/opentelemetry-helm-charts
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: "*"
+  clusterResourceWhitelist:
+    - group: "*"
+      kind: "*"

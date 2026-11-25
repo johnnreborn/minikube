@@ -1,0 +1,28 @@
+# AppProject `apps` (ARCHITECTURE §10.3): application teams may change workloads and HTTPRoutes only.
+# No cluster-scoped resources (empty whitelist), no isolation/quota objects - those belong to the platform.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: apps
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-5"
+spec:
+  description: Application workloads (boutique, l4-test)
+  sourceRepos:
+    - https://github.com/johnnreborn/minikube
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: boutique
+    - server: https://kubernetes.default.svc
+      namespace: l4-test
+  clusterResourceWhitelist: []
+  namespaceResourceBlacklist:
+    - group: networking.k8s.io
+      kind: NetworkPolicy
+    - group: cilium.io
+      kind: CiliumNetworkPolicy
+    - group: ""
+      kind: ResourceQuota
+    - group: ""
+      kind: LimitRange

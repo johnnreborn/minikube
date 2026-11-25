@@ -103,6 +103,23 @@ if have yq; then
       [[ "$repo" == "${V[$rvar]:-}" ]] || bad "$f: $chart repoURL '$repo' != versions.env $rvar '${V[$rvar]:-}'"
     done < <(yq -r '(.spec.sources // [.spec.source])[] | select(.chart != null) | [.chart, .targetRevision, .repoURL] | @tsv' "$f" 2>/dev/null)
   done
+  # every Git source (no chart) must point at the same GitOps repo/revision; bootstrap compares it with .env
+  git_srcs=$(for f in gitops/**/*.yaml gitops/root.yaml; do
+    [[ -f "$f" && "$(yq '.kind' "$f" 2>/dev/null | head -1)" == "Application" ]] || continue
+    yq -r '(.spec.sources // [.spec.source])[] | select(.chart == null) | [.repoURL, .targetRevision] | @tsv' "$f" 2>/dev/null
+  done | grep . | sort -u)   # yq prints an empty line for an Application without Git sources
+  if [[ $(grep -c . <<<"$git_srcs") -gt 1 ]]; then bad "gitops: Git sources disagree on repoURL/targetRevision: $(tr '\n' ' ' <<<"$git_srcs")"; fi
+  gitops_repo=$(head -1 <<<"$git_srcs" | cut -f1)
+  # AppProject sourceRepos: the GitOps repo or a chart repository pinned in versions.env, nothing else
+  declare -A KNOWN_REPOS=()
+  for k in "${!V[@]}"; do [[ "$k" == *_CHART_REPO ]] && KNOWN_REPOS[${V[$k]}]=1; done
+  for f in gitops/projects/*.yaml; do
+    [[ -f "$f" ]] || continue
+    while IFS= read -r r; do
+      [[ -n "$r" && "$r" != null ]] || continue
+      [[ "$r" == "$gitops_repo" || -n "${KNOWN_REPOS[$r]:-}" ]] || bad "$f: sourceRepos entry '$r' is neither the GitOps repo nor a *_CHART_REPO in versions.env"
+    done < <(yq -r '.spec.sourceRepos[]' "$f" 2>/dev/null)
+  done
 else
   bad "yq not installed: cannot compare Application targetRevision"
 fi

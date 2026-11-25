@@ -1,0 +1,26 @@
+# root Application (app-of-apps, ARCHITECTURE §10.2). Applied once by bootstrap/scripts/gitops-bootstrap.sh; it is the
+# only Application not managed from Git itself. It manages the AppProjects and every child Application.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/johnnreborn/minikube
+    targetRevision: main
+    path: gitops
+    directory:
+      recurse: true
+      include: "{projects/*.yaml,apps/*/*.yaml}"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - PruneLast=true

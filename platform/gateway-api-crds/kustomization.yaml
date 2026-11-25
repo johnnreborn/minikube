@@ -5,6 +5,9 @@
 # Must be applied server-side (the CRDs exceed the client-side apply annotation limit).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+# never prune a CRD from Argo CD: deleting it deletes every object of that kind (ARCHITECTURE §10.2)
+commonAnnotations:
+  argocd.argoproj.io/sync-options: Prune=false
 resources:
   - gateway.networking.k8s.io_gatewayclasses.yaml
   - gateway.networking.k8s.io_gateways.yaml
