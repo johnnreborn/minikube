@@ -113,6 +113,21 @@ if [[ -f bootstrap/kind/cluster.yaml ]]; then
     [[ "$img" == "${V[KIND_NODE_IMAGE]:-}" ]] || bad "bootstrap/kind/cluster.yaml: node image '$img' != versions.env KIND_NODE_IMAGE"
   done < <(grep -E '^\s*image:' bootstrap/kind/cluster.yaml | awk '{print $2}')
 fi
+# ---- vendored Gateway API CRDs: version/channel annotations vs versions.env, and the 7 CRDs Cilium requires ----
+GW_DIR=platform/gateway-api-crds
+if compgen -G "$GW_DIR/gateway.networking.k8s.io_*.yaml" >/dev/null; then
+  for plural in gatewayclasses gateways httproutes referencegrants grpcroutes backendtlspolicies tlsroutes; do
+    f="$GW_DIR/gateway.networking.k8s.io_$plural.yaml"
+    if [[ ! -f "$f" ]]; then bad "$f: missing (Cilium 1.20 requires this Gateway API CRD)"; continue; fi
+    if have yq; then
+      bv=$(yq '.metadata.annotations["gateway.networking.k8s.io/bundle-version"]' "$f")
+      ch=$(yq '.metadata.annotations["gateway.networking.k8s.io/channel"]' "$f")
+      [[ "$bv" == "${V[GATEWAY_API_VERSION]:-}" ]] || bad "$f: bundle-version '$bv' != versions.env GATEWAY_API_VERSION '${V[GATEWAY_API_VERSION]:-}'"
+      [[ "$ch" == "${V[GATEWAY_API_CHANNEL]:-}" ]] || bad "$f: channel '$ch' != versions.env GATEWAY_API_CHANNEL '${V[GATEWAY_API_CHANNEL]:-}'"
+    fi
+  done
+fi
+
 for f in bootstrap/scripts/*.sh Makefile tests/*.sh; do
   [[ -f "$f" ]] || continue
   # versions must come from versions.env, not be typed into scripts

@@ -1,6 +1,7 @@
 extends: default
 ignore: |
   apps/online-boutique/upstream/
+  platform/gateway-api-crds/gateway.networking.k8s.io_*.yaml
   tests/results/
   tests/.cache/
 rules:
