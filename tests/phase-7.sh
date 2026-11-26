@@ -255,10 +255,21 @@ check_cilium() {
     report "cilium $sync/$health; rollouts for the monitoring layer: agent $((ds - bds)), operator $((op - bop)); container restarts since the sync: $late"
     (( ds - bds <= 1 && op - bop <= 1 && late == 0 )) || return 1
   else
-    # rebuilt cluster: Cilium was installed with the monitoring layer from the start - no rollout and no restart at all
-    restarts=$(k -n kube-system get pods -l app.kubernetes.io/part-of=cilium -o json | jq '[.items[].status.containerStatuses[]?.restartCount] | add')
-    echo "no pre-sync snapshot: agent revision $ds, operator revision $op, restarts $restarts"
-    report "cilium $sync/$health; installed with the layer: agent revision $ds, operator revision $op, restarts $restarts"
+    # rebuilt cluster (SPEC §6.7 AC-7.10 note): the layer is applied by the Argo CD adoption sync, so no container may
+    # restart after it. Without an adoption record from this cluster, no restart at all is allowed.
+    local adopted total
+    adopted=$(sed -n "s/^ADOPTION_FINISHED='\(.*\)'$/\1/p" "$CACHE_DIR/cilium-adoption.env" 2>/dev/null || true)
+    total=$(k -n kube-system get pods -l app.kubernetes.io/part-of=cilium -o json | jq '[.items[].status.containerStatuses[]?.restartCount] | add')
+    if [[ -n "$adopted" && "$adopted" > "$created" ]]; then
+      restarts=$(k -n kube-system get pods -l app.kubernetes.io/part-of=cilium -o json | jq --arg t "$adopted" \
+        '[.items[].status.containerStatuses[]?.lastState.terminated | select(. != null and .finishedAt > $t)] | length')
+      echo "installed with the layer, adopted at $adopted: agent revision $ds, operator revision $op, restarts after adoption $restarts (since install: $total)"
+      report "cilium $sync/$health; installed with the layer: agent revision $ds, operator revision $op; container restarts after the adoption sync ($adopted): $restarts (since install: $total)"
+    else
+      restarts=$total
+      echo "no adoption record from this cluster: agent revision $ds, operator revision $op, restarts $restarts"
+      report "cilium $sync/$health; installed with the layer: agent revision $ds, operator revision $op, restarts $restarts"
+    fi
     (( ds <= 2 && op <= 2 && restarts == 0 )) || return 1
   fi
   [[ "$sync" == Synced && "$health" == Healthy ]]
