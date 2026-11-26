@@ -1,0 +1,31 @@
+# Phase 7 monitoring layer: metrics Services and ServiceMonitors for every Argo CD component.
+controller:
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+server:
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+repoServer:
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+applicationSet:
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+redis:
+  exporter:                       # redis has no metrics endpoint of its own: exporter sidecar (image pinned by chart)
+    enabled: true
+    resources:
+      requests: {cpu: 10m, memory: 32Mi}
+      limits: {memory: 64Mi}
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true

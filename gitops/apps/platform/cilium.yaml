@@ -18,6 +18,7 @@ spec:
         releaseName: cilium
         valueFiles:
           - $values/platform/cilium/values.yaml
+          - $values/platform/cilium/values-monitoring.yaml
     - repoURL: https://github.com/johnnreborn/minikube
       targetRevision: main
       ref: values

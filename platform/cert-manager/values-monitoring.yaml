@@ -1,0 +1,5 @@
+# Phase 7 monitoring layer: ServiceMonitor for the cert-manager components.
+prometheus:
+  servicemonitor:
+    enabled: true
+    interval: 30s

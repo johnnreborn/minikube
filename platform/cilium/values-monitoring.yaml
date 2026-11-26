@@ -1,0 +1,24 @@
+# Phase 7 monitoring layer (SPEC §5.3), added after the Prometheus Operator CRDs exist. Changes pod annotations of the
+# agent and operator (the chart drops prometheus.io/* when ServiceMonitors are used): one rolling restart (AC-7.10);
+# cilium-config is unchanged. Synced by hand like every Cilium change.
+prometheus:
+  serviceMonitor:
+    enabled: true
+operator:
+  prometheus:
+    serviceMonitor:
+      enabled: true
+  dashboards:
+    enabled: true
+envoy:
+  prometheus:
+    serviceMonitor:
+      enabled: true
+hubble:
+  metrics:
+    serviceMonitor:
+      enabled: true
+    dashboards:
+      enabled: true
+dashboards:                       # Grafana dashboard ConfigMaps (label grafana_dashboard=1), picked up by the sidecar
+  enabled: true

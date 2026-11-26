@@ -17,6 +17,7 @@ spec:
         releaseName: argocd
         valueFiles:
           - $values/platform/argocd/values.yaml
+          - $values/platform/argocd/values-monitoring.yaml
     - repoURL: https://github.com/johnnreborn/minikube
       targetRevision: main
       ref: values
