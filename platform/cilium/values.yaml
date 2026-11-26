@@ -30,9 +30,9 @@ gatewayAPI:
 envoy:
   enabled: true
 
-# Phase 8 audit window (SPEC §6.8): only L3/L4 verdicts become AUDIT; L7 rules stay enforced. Set back to false once
-# the audit is clean. Never re-enable audit mode to make a test pass (CLAUDE.md).
-policyAuditMode: true
+# Policies are enforced. The Phase 8 audit window (15 min, 0 unexpected AUDIT verdicts) ran with true; a broken
+# policy is reverted in Git, never hidden by re-enabling audit mode (CLAUDE.md, SPEC §6.8 rollback).
+policyAuditMode: false
 
 # roll agent / operator pods when cilium-config changes: settings such as policy-audit-mode are read at agent start
 rollOutCiliumPods: true
