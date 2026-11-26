@@ -714,8 +714,8 @@ flowchart LR
 
 **작업**
 1. Cilium values `policyAuditMode: true` 커밋 → 수동 sync
-2. `platform/policies/boutique/`: 기본 거부 NP, DNS, 간선별 CNP(§5.6), `platform/policies/{observability,argocd}/`: Ingress 격리 → 앱 `policies`
-3. 감사: 부하 상태(loadgenerator + probe 체크아웃 루프)로 15분 → `hubble observe --verdict AUDIT` 분석 → 예상 외 플로우는 정책 수정(또는 SPEC 매트릭스 갱신)
+2. `platform/policies/boutique/`: 기본 거부 NP, DNS, 간선별 CNP(§5.6), `platform/policies/{observability,argocd}/`: Ingress 격리, `platform/policies/l4-test/`: 기본 거부 + VIP 진입만 허용(ARCHITECTURE §8.1) → 앱 `policies`
+3. 감사: 부하 상태(loadgenerator + probe 체크아웃 루프)로 15분 → `hubble observe --verdict AUDIT` 분석 → 예상 외 플로우는 정책 수정(또는 SPEC 매트릭스 갱신). **감사 모드는 L3/L4만 감사하고 L7 규칙은 그대로 집행한다(Cilium 1.20 문서)** → 감사 단계의 L7 규칙은 전부 허용(`http: [{}]`, 가시성 전용)으로 두고 Hubble L7 플로우로 실제 메서드를 수집한 뒤, 확정한 화이트리스트로 바꾸고 Hubble에 403(L7 거부)이 없음을 확인한다
 4. `policyAuditMode: false` 커밋 → 수동 sync
 5. PSA restricted enforce(필요 패치 포함), `apps` AppProject에 정책 리소스 금지 추가
 6. Golden Signals에 Hubble L7 패널 추가, `HubblePolicyDropsDetected` 규칙 추가
@@ -930,3 +930,4 @@ COULD 항목 중 FR-NET-05, FR-L7-08, FR-ISO-11은 채택 시 AC를 추가한다
 | 1.0-draft+5 | 2026-11-26 | §5.7: kubelet·controller-manager·scheduler 스크레이프 TLS 예외(ADR-0011). AC-7.4: "컨테이너 ≥ 12종" → 서로 다른 `(app, container)` 조합 ≥ 12(업스트림 컨테이너 이름은 3종뿐) — 사용자 승인 |
 | 1.0-draft+6 | 2026-11-26 | §5.3: 부트스트랩이 Prometheus Operator CRD를 먼저 적용하고 Argo CD와 같은 Cilium values 레이어로 설치(재구축 시 인수 diff를 추적 메타데이터로 유지, ADR-0012) — 사용자 승인 |
 | 1.0-draft+7 | 2026-11-26 | §6.7: AC-7.5 판정 주석(업스트림 Node 서비스의 parentSpanId 누락) — 사용자 승인 |
+| 1.0-draft+8 | 2026-11-26 | §6.8: L7은 감사 모드에서도 집행되므로 2단계 L7(가시성 → 화이트리스트) 절차 명시, l4-test 기본 거부 추가 — 사용자 승인 |
