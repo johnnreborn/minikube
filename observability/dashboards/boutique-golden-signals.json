@@ -206,6 +206,73 @@
         "overrides": []
       },
       "description": "cartservice, shippingservice and adservice have no OpenTelemetry in v0.10.7"
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Hubble L7: requests per service (server side, via the L7 policy proxy)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "description": "hubble_http_requests_total; exists for every service with an L7 rule (Phase 8), including the services without tracing",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "range": true,
+          "legendFormat": "{{destination_workload}}",
+          "expr": "sum by (destination_workload) (rate(hubble_http_requests_total{destination_namespace=\"boutique\", reporter=\"server\"}[$__rate_interval]))"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Hubble L7: non-2xx share (403 = denied by L7 policy)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "range": true,
+          "legendFormat": "{{destination_workload}} {{status}}",
+          "expr": "sum by (destination_workload, status) (rate(hubble_http_requests_total{destination_namespace=\"boutique\", reporter=\"server\", status!~\"2..\"}[$__rate_interval])) / ignoring(status) group_left sum by (destination_workload) (rate(hubble_http_requests_total{destination_namespace=\"boutique\", reporter=\"server\"}[$__rate_interval]))"
+        }
+      ]
     }
   ]
 }

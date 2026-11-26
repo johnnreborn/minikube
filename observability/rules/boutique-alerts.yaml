@@ -46,6 +46,24 @@ spec:
           labels: {severity: warning}
           annotations:
             summary: "frontend p95 latency {{ $value | humanize }}ms > 1s"
+        # Phase 8: policy drops that involve a boutique workload (source or destination, hubble policy metric with
+        # workload-name|reserved-identity context). Excluded: the documented, always-blocked GCP metadata probe of the
+        # frontend (frontend / frontend-canary -> reserved:world, tests/policy-audit-expected.txt); without that the
+        # alert would fire permanently. Drops from other boutique workloads to the internet are still covered.
+        # "[a-z]+service" = the nine boutique gRPC services (no other workload in the cluster ends in "service").
+        - alert: HubblePolicyDropsDetected
+          expr: |
+            (sum(increase(hubble_policy_verdicts_total{action="dropped",
+                source=~"frontend(-canary)?|loadgenerator|redis-cart|[a-z]+service"}[5m])) or vector(0))
+            + (sum(increase(hubble_policy_verdicts_total{action="dropped",
+                destination=~"frontend(-canary)?|loadgenerator|redis-cart|[a-z]+service"}[5m])) or vector(0))
+            - (sum(increase(hubble_policy_verdicts_total{action="dropped",
+                source=~"frontend(-canary)?", destination="reserved:world"}[5m])) or vector(0))
+            > 0
+          for: 2m
+          labels: {severity: warning}
+          annotations:
+            summary: "network policy drops involving boutique workloads ({{ $value | humanize }} in 5m)"
     - name: platform.rules
       rules:
         - alert: GatewayHigh5xxRate
