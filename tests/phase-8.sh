@@ -37,25 +37,28 @@ show_report
 
 # AC-8.2 ---------------------------------------------------------------------------------------
 check_enforcement() {
-  local cm agents p eps total=0 bad=0
+  local cm p cfg eps total=0 bad_ep=0 agents=0 bad_ag=0
   cm=$(k -n kube-system get cm cilium-config -o jsonpath='{.data.policy-audit-mode}')
   [[ "$cm" == false ]] || { echo "cilium-config policy-audit-mode=$cm"; return 1; }
   for p in $(k -n kube-system get pods -l k8s-app=cilium -o name); do
-    k -n kube-system exec "$p" -c cilium-agent -- cilium-dbg config -a 2>/dev/null | grep -Eq 'PolicyAuditMode +: +(false|Disabled)' ||
-      { echo "$p: policy audit mode still on"; bad=$((bad + 1)); }
-    eps=$(k -n kube-system exec "$p" -c cilium-agent -- cilium-dbg endpoint list -o json 2>/dev/null | jq -r '.[] |
-      select([.status.labels["security-relevant"][]?] | any(. == "k8s:io.kubernetes.pod.namespace=boutique")) |
-      "\(.id) \([.status.labels["security-relevant"][] | select(startswith("k8s:app="))][0]) \(.status.policy.realized["policy-enabled"])"')
+    agents=$((agents + 1))
+    # capture first: `cmd | grep -q` under pipefail fails at random when grep exits before the writer (SIGPIPE)
+    cfg=$(k -n kube-system exec "$p" -c cilium-agent -- cilium-dbg config -a 2>&1) || { echo "$p: cilium-dbg config failed"; bad_ag=$((bad_ag + 1)); continue; }
+    if grep -Eq 'PolicyAuditMode +: +(true|Enabled)' <<<"$cfg" || ! grep -Eq 'PolicyAuditMode +: +false' <<<"$cfg"; then
+      echo "$p: policy audit mode not off"; bad_ag=$((bad_ag + 1))
+    fi
+    eps=$(k -n kube-system exec "$p" -c cilium-agent -- cilium-dbg endpoint list -o json 2>/dev/null) || { echo "$p: endpoint list failed"; bad_ag=$((bad_ag + 1)); continue; }
     while read -r id app mode; do
       [[ -n "$id" ]] || continue
       total=$((total + 1))
-      [[ "$mode" == both ]] || { echo "$p endpoint $id $app: policy-enabled=$mode"; bad=$((bad + 1)); }
-    done <<<"$eps"
+      [[ "$mode" == both ]] || { echo "$p endpoint $id $app: policy-enabled=$mode"; bad_ep=$((bad_ep + 1)); }
+    done < <(jq -r '.[] | select([.status.labels["security-relevant"][]?] | any(. == "k8s:io.kubernetes.pod.namespace=boutique")) |
+      "\(.id) \([.status.labels["security-relevant"][] | select(startswith("k8s:app="))][0]) \(.status.policy.realized["policy-enabled"])"' <<<"$eps")
   done
   local pods; pods=$(k -n "$NS" get pods --field-selector=status.phase=Running --no-headers | wc -l)
-  echo "boutique endpoints: $total (running pods $pods), not fully enforced: $bad"
-  report "policy-audit-mode=false on all agents; boutique endpoints with ingress+egress enforcement: $((total - bad))/$total (running pods: $pods)"
-  [[ $bad -eq 0 && $total -eq $pods && $total -gt 0 ]]
+  echo "agents with audit mode off: $((agents - bad_ag))/$agents; boutique endpoints enforcing both ways: $((total - bad_ep))/$total (running pods $pods)"
+  report "cilium-config policy-audit-mode=$cm; agents with audit mode off: $((agents - bad_ag))/$agents; boutique endpoints with ingress+egress enforcement: $((total - bad_ep))/$total (running pods: $pods)"
+  [[ $bad_ag -eq 0 && $bad_ep -eq 0 && $total -eq $pods && $total -gt 0 ]]
 }
 ac_check AC-8.2 "audit mode off; every boutique endpoint enforces ingress and egress" check_enforcement
 show_report

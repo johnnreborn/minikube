@@ -189,7 +189,10 @@ hubble_expect() {
   local filter=$1 verdict=$2 window=${3:-60s}
   local p; p=$(_pf kube-system hubble-relay 80)
   # shellcheck disable=SC2086
-  hubble observe --server "localhost:$p" --since "$window" --verdict "$verdict" $filter -o jsonpb --last 1 2>/dev/null | grep -q .
+  local out
+  # capture first: `cmd | grep -q` under pipefail can fail at random (SIGPIPE when grep exits before the writer)
+  out=$(hubble observe --server "localhost:$p" --since "$window" --verdict "$verdict" $filter -o jsonpb --last 1 2>/dev/null) || true
+  [[ -n "$out" ]]
 }
 
 # ---- Argo CD fault injection (SPEC §7.4) -----------------------------------------------------
