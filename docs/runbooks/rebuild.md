@@ -57,6 +57,7 @@ make up && make wait-sync
 | 차트 다운로드 실패 | 자동 5회 재시도. 계속 실패하면 외부 네트워크 확인 |
 | 이미지 pull 지연으로 앱 Healthy 대기 초과 | `kubectl get pods -A \| grep -v Running`, `describe`로 pull 오류 확인 후 `make up` 재실행 |
 | `cilium diff contains more than tracking metadata` | 인수 가드. helm 설치와 Argo CD 렌더가 다르다 — values 목록(`cni.sh`)·helm 버전(`versions.env`) 확인. **가드를 끄지 않는다** |
+| `cache: key is missing` (인수 diff) | 부트스트랩이 컨트롤러를 한 번 다시 띄우고 재시도한다. Argo CD values 목록(`gitops-bootstrap.sh`)이 Application과 같은지 확인 |
 | `cilium app not comparable` | repo-server가 차트를 못 가져옴 → 회복 후 `make gitops-bootstrap` 재실행 |
 | AC-2.4(외부 대상 연결성) 실패 | 알려진 환경 문제(WSL 밖 외부 HTTPS 간헐 멈춤, PROGRESS 편차) |
 

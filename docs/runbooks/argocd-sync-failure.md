@@ -33,6 +33,7 @@ KUBECONFIG="$KCFG" argocd --core app diff <app> --server-side-diff
 | `OutOfSync`가 계속 | 컨트롤러가 값을 바꿈, 비결정적 렌더(인증서) | diff로 필드를 확인, 필요하면 최소 범위 `ignoreDifferences` |
 | 수동 변경이 되돌아감 | selfHeal(정상 동작) | Git을 바꾼다. 장애 주입은 SPEC §7.4 |
 | sync wave가 멈춤 | 앞 웨이브 앱이 Healthy가 아님 | 막힌 앱부터 해결 |
+| `app diff`가 `cache: key is missing` | argocd-redis가 교체됨. 컨트롤러의 메모리 캐시 때문에 바뀌지 않는 앱은 다시 써지지 않는다 | `kubectl -n argocd delete pod argocd-application-controller-0` 후 다시 diff(ADR-0012 개정) |
 | 첫 설치에서 `pki`/`gateway` 실패 | cert-manager webhook 준비 전 | 앱에 sync retry가 있다. 재시도가 끝났으면 앱을 다시 sync |
 
 ## 3. Cilium은 특별하다 (CNI)

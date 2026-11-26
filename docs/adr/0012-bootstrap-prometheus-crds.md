@@ -21,3 +21,11 @@ Application과 **같은 values 파일 목록**으로 Cilium을 설치한다. CRD
 - (+) 부트스트랩과 Argo CD가 같은 파일을 쓴다는 원칙(CLAUDE.md)을 지킨다
 - (−) 부트스트랩 예외가 하나 늘었다(ARCHITECTURE §10.1)
 - 새 경로(`cni.sh`의 CRD 단계)는 Phase 9 클린 재구축에서 처음 실행된다
+
+## 개정 (2026-11-27, Phase 9 첫 재구축)
+같은 원칙을 Argo CD에도 적용한다. 부트스트랩이 `values.yaml`만으로 설치하면 `argocd` Application의 첫 자기 동기화가
+`values-monitoring.yaml`(redis exporter 사이드카)을 적용해 **redis를 교체**한다. 컨트롤러의 메모리 캐시는 바뀌지 않는 앱(cilium)의
+리소스를 새 redis에 다시 쓰지 않아 `argocd app diff cilium`이 `cache: key is missing`으로 실패하고 인수가 멈췄다.
+`gitops-bootstrap.sh`는 Application과 같은 values 목록으로 설치한다(두 레이어 렌더는 Argo CD 렌더와 동일함을 확인, `check-versions`가 강제).
+같은 오류가 나면 컨트롤러 Pod를 한 번 다시 띄운다.
+

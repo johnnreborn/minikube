@@ -167,13 +167,16 @@ if [[ -f bootstrap/kind/cluster.yaml ]]; then
     [[ "$img" == "${V[KIND_NODE_IMAGE]:-}" ]] || bad "bootstrap/kind/cluster.yaml: node image '$img' != versions.env KIND_NODE_IMAGE"
   done < <(grep -E '^\s*image:' bootstrap/kind/cluster.yaml | awk '{print $2}')
 fi
-# ---- cni.sh installs Cilium with exactly the value files of the cilium Application (adoption must be a no-op) -------
-CILIUM_APP=gitops/apps/platform/cilium.yaml
-if [[ -f "$CILIUM_APP" && -f bootstrap/scripts/cni.sh ]] && have yq; then
-  app_vals=$(yq -r '.spec.sources[] | select(.helm) | .helm.valueFiles[]' "$CILIUM_APP" | sed 's|^\$values/||' | tr '\n' ' ')
-  cni_vals=$(sed -n -E 's/^VALUE_FILES=\((.*)\)$/\1/p' bootstrap/scripts/cni.sh | tr -s ' ' | sed 's/$/ /')
-  [[ "$app_vals" == "$cni_vals" ]] || bad "cni.sh VALUE_FILES '$cni_vals' != $CILIUM_APP valueFiles '$app_vals'"
-fi
+# ---- bootstrap installs Cilium and Argo CD with exactly the value files of their Applications ----------------------
+# adoption must change tracking metadata only (Cilium), and Argo CD's first self-sync must not replace its own pods
+for row in "gitops/apps/platform/cilium.yaml|bootstrap/scripts/cni.sh|VALUE_FILES" \
+           "gitops/apps/platform/argocd.yaml|bootstrap/scripts/gitops-bootstrap.sh|ARGOCD_VALUE_FILES"; do
+  IFS='|' read -r app script var <<<"$row"
+  [[ -f "$app" && -f "$script" ]] && have yq || continue
+  app_vals=$(yq -r '.spec.sources[] | select(.helm) | .helm.valueFiles[]' "$app" | sed 's|^\$values/||' | tr '\n' ' ')
+  script_vals=$(sed -n -E "s/^$var=\((.*)\)\$/\1/p" "$script" | tr -s ' ' | sed 's/$/ /')
+  [[ "$app_vals" == "$script_vals" ]] || bad "$script $var '$script_vals' != $app valueFiles '$app_vals'"
+done
 
 # ---- OTel Collector image set through chart values (not an `image:` line) ----------------------------------------
 OTEL_VALUES=observability/otel-collector/values.yaml

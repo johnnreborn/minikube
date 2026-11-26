@@ -16,6 +16,10 @@ load_env
 require_cmd kubectl helm argocd jq yq git
 
 CONTEXT=kind-boutique
+# the same value files, in the same order, as gitops/apps/platform/argocd.yaml (scripts/check-versions.sh checks it).
+# Otherwise Argo CD's first self-sync changes its own pods - the monitoring layer adds a sidecar to redis, redis is
+# replaced, and the controller never writes the cached resources of unchanged apps to the new one (see step 5).
+ARGOCD_VALUE_FILES=(platform/argocd/values.yaml platform/argocd/values-monitoring.yaml)
 ARGO_NS=argocd
 CACHE_DIR="$REPO_ROOT/tests/.cache"           # gitignored; the Phase 3 test reads the adoption snapshot from here
 SNAP_BEFORE="$CACHE_DIR/cilium-adoption-before.tsv"
@@ -47,10 +51,12 @@ if k -n "$ARGO_NS" get application argocd >/dev/null 2>&1; then
 else
   CHART_DIR=$(mktemp -d)
   argocd_chart=$(pull_chart "$ARGOCD_CHART_REPO" argo-cd "$ARGOCD_CHART_VERSION" "$CHART_DIR")
-  log "helm upgrade --install argocd (chart ${ARGOCD_CHART_VERSION}, values platform/argocd/values.yaml)"
+  value_args=()
+  for f in "${ARGOCD_VALUE_FILES[@]}"; do value_args+=(-f "$f"); done
+  log "helm upgrade --install argocd (chart ${ARGOCD_CHART_VERSION}, values ${ARGOCD_VALUE_FILES[*]})"
   helm upgrade --install argocd "$argocd_chart" \
     --kube-context "$CONTEXT" --namespace "$ARGO_NS" --create-namespace \
-    -f platform/argocd/values.yaml --wait=legacy --timeout 10m   # helm v4 "watcher" waits --timeout per non-Job hook (redis-secret-init: 4 x 10 min)
+    "${value_args[@]}" --wait=legacy --timeout 10m   # helm v4 "watcher" waits --timeout per non-Job hook (redis-secret-init: 4 x 10 min)
   rm -f -- "${CHART_DIR:?}"/*.tgz; rmdir -- "${CHART_DIR:?}"
   ok "Argo CD installed"
 fi
@@ -127,7 +133,17 @@ else
 
   # the argocd app may just have updated itself (repo-server restart): never diff a half-rendered comparison
   wait_app_comparable "$CONTEXT" cilium 600 >/dev/null || die "cilium app not comparable - not adopting"
-  diff_out=$(acd app diff cilium --refresh --exit-code=false 2>&1) || die "argocd app diff failed: $diff_out"
+  cilium_diff() { acd app diff cilium --refresh --exit-code=false 2>&1; }
+  if ! diff_out=$(cilium_diff); then
+    # `argocd app diff` reads the resources the controller caches in redis. If redis was replaced, the controller's
+    # in-memory copy makes it skip rewriting the entries of apps that did not change (cilium): restart it once.
+    grep -q 'cache: key is missing' <<<"$diff_out" || die "argocd app diff failed: $diff_out"
+    warn "redis lost the cached resources of the cilium app: restarting the application controller once"
+    k -n "$ARGO_NS" delete pod argocd-application-controller-0 --wait=true >/dev/null
+    k -n "$ARGO_NS" rollout status statefulset/argocd-application-controller --timeout=5m >/dev/null
+    wait_app_comparable "$CONTEXT" cilium 600 >/dev/null || die "cilium app not comparable - not adopting"
+    diff_out=$(cilium_diff) || die "argocd app diff failed again: $diff_out"
+  fi
   # allowed: resource headers, diff hunk markers, and added/removed lines that only carry Argo CD tracking metadata
   unexpected=$(grep -E '^[<>]' <<<"$diff_out" | grep -v -E '^[<>][[:space:]]+(annotations:[[:space:]]*(\{\})?|argocd\.argoproj\.io/tracking-id:.*)$' || true)
   if [[ -n "$unexpected" ]]; then
