@@ -30,13 +30,18 @@ gatewayAPI:
 envoy:
   enabled: true
 
-# Never re-enable audit mode to make a test pass (CLAUDE.md). Phase 8 uses it only for the documented audit window.
-policyAuditMode: false
+# Phase 8 audit window (SPEC §6.8): only L3/L4 verdicts become AUDIT; L7 rules stay enforced. Set back to false once
+# the audit is clean. Never re-enable audit mode to make a test pass (CLAUDE.md).
+policyAuditMode: true
+
+# roll agent / operator pods when cilium-config changes: settings such as policy-audit-mode are read at agent start
+rollOutCiliumPods: true
 
 # --- placement: operator on the infra node. The default tolerations (control-plane, not-ready, ...) are kept
 #     because the operator must start while nodes are still NotReady ---------------------------------------------
 operator:
   replicas: 1
+  rollOutPods: true
   nodeSelector:
     kubernetes.io/os: linux
     node.boutique.io/pool: infra
