@@ -13,13 +13,6 @@ routingMode: tunnel
 tunnelProtocol: vxlan
 loadBalancer:
   algorithm: maglev
-  # East-West L7 load balancing (AC-6.11, beta in Cilium 1.20): Services annotated service.cilium.io/lb-l7=enabled are
-  # balanced per request by the node's Envoy instead of per connection by eBPF
-  l7:
-    backend: envoy
-
-# roll the agent / operator pods when the ConfigMap changes, so a (manual) Argo CD sync really applies new settings
-rollOutCiliumPods: true
 
 # --- L4: LB-IPAM pool / L2 announcement policy are applied in Phase 4 (platform/cilium-lb) -------------------
 l2announcements:
@@ -44,7 +37,6 @@ policyAuditMode: false
 #     because the operator must start while nodes are still NotReady ---------------------------------------------
 operator:
   replicas: 1
-  rollOutPods: true
   nodeSelector:
     kubernetes.io/os: linux
     node.boutique.io/pool: infra
