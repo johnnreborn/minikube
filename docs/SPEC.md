@@ -333,6 +333,8 @@ prometheus:
 `platform/cilium/values-monitoring.yaml` (Phase 7에서 Application의 valueFiles에 추가):
 ServiceMonitor 활성화 — agent(`prometheus.serviceMonitor`), operator, hubble metrics, envoy. 필요 시 Cilium 차트의 Grafana 대시보드 ConfigMap 활성화.
 
+부트스트랩(`cni.sh`)은 monitoring 레이어가 만드는 ServiceMonitor를 위해 Prometheus Operator CRD를 먼저 server-side apply한 뒤, Application과 **같은 values 파일 목록**으로 설치한다(ADR-0012, `make lint`가 목록 일치를 검사).
+
 Argo CD 인수 규칙:
 - Application `cilium`: `releaseName: cilium`, `namespace: kube-system`, 자동 sync 없음, `ServerSideApply=true`.
 - 인수 전 `argocd app diff`(또는 `--core`)로 차이가 메타데이터(추적 어노테이션)뿐임을 확인 후 sync.
@@ -924,3 +926,4 @@ COULD 항목 중 FR-NET-05, FR-L7-08, FR-ISO-11은 채택 시 AC를 추가한다
 | 1.0-draft+3 | 2026-11-26 | §5.4: L2 Announcements와 `externalTrafficPolicy: Local`의 공식 비호환 주의 문구 추가(`echo-local`은 실증용, 운영 Service는 Cluster) — 사용자 승인. ADR-0003 결과에 같은 내용 반영 |
 | 1.0-draft+4 | 2026-11-26 | §5.5·§6.6(AC-6.11): 측정을 Hubble 메트릭 → Hubble L7 플로우(측정 중 임시 L7 가시성 정책)로 변경. `httpV2` 메트릭에 `destination_pod`가 없고 L7 데이터는 가시성 정책이 필요 — 사용자 승인 |
 | 1.0-draft+5 | 2026-11-26 | §5.7: kubelet·controller-manager·scheduler 스크레이프 TLS 예외(ADR-0011). AC-7.4: "컨테이너 ≥ 12종" → 서로 다른 `(app, container)` 조합 ≥ 12(업스트림 컨테이너 이름은 3종뿐) — 사용자 승인 |
+| 1.0-draft+6 | 2026-11-26 | §5.3: 부트스트랩이 Prometheus Operator CRD를 먼저 적용하고 Argo CD와 같은 Cilium values 레이어로 설치(재구축 시 인수 diff를 추적 메타데이터로 유지, ADR-0012) — 사용자 승인 |

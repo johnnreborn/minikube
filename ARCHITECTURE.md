@@ -316,14 +316,14 @@ sequenceDiagram
   participant G as Git (원격)
   M->>D: network create kind-boutique (멱등)
   M->>K: create cluster (CNI/kube-proxy 없음)
-  M->>H: Gateway API CRDs → Cilium (platform/cilium/values.yaml)
+  M->>H: Gateway API + Prometheus Operator CRDs → Cilium (values.yaml + values-monitoring.yaml)
   M->>H: Argo CD (platform/argocd/values.yaml)
   M->>A: repo Secret(.env) + AppProjects + root Application
   A->>G: gitops/apps/** 조회
   A->>A: cilium·argocd 인수(adoption), 이후 웨이브 순으로 동기화
 ```
 
-부트스트랩 예외(Git이 아닌 명령형으로 생성되는 것): Docker 네트워크, kind 클러스터, 최초 Cilium/Argo CD 설치, repo 자격증명 Secret, Grafana 관리자 Secret. 이 목록 외 리소스는 반드시 Argo CD가 관리한다.
+부트스트랩 예외(Git이 아닌 명령형으로 생성되는 것): Docker 네트워크, kind 클러스터, Gateway API·Prometheus Operator CRD의 최초 적용(이후 Argo CD 앱이 인수, ADR-0012), 최초 Cilium/Argo CD 설치, repo 자격증명 Secret, Grafana 관리자 Secret. 이 목록 외 리소스는 반드시 Argo CD가 관리한다.
 
 ### 10.2 애플리케이션 트리와 Sync Wave
 
@@ -469,3 +469,4 @@ online-boutique-platform/
 | 0009 | Loki·Tempo 차트는 grafana-community 저장소 사용 |
 | 0010 | East-West L7 로드밸런싱(Cilium lb-l7)은 채택하지 않음 |
 | 0011 | kubelet·controller-manager·scheduler 스크레이프 TLS 검증 생략(3개 타깃 예외) |
+| 0012 | 부트스트랩에서 Prometheus Operator CRD를 먼저 적용하고 Cilium을 같은 values 레이어로 설치 |
