@@ -5,8 +5,8 @@
 
 ## 현재 상태
 
-- 현재 Phase: **6 — L7 Gateway API** (⬜ 대기, Phase 5 ✅ 완료 2026-11-26)
-- 다음 행동: 사용자 확인 후 Phase 6 착수 (`/phase 6`). 이제 클러스터 변경은 commit + push로만 반영된다(Argo CD가 `origin/main`을 본다). Cilium은 수동 sync
+- 현재 Phase: **7 — 관측 가능성** (⬜ 대기, Phase 6 ✅ 완료 2026-11-26)
+- 다음 행동: 사용자 확인 후 Phase 7 착수 (`/phase 7`). 이제 클러스터 변경은 commit + push로만 반영된다(Argo CD가 `origin/main`을 본다). Cilium은 수동 sync
 - 차단 요소: 없음. 알려진 환경 문제: 외부 인터넷 HTTPS 간헐 멈춤(WSL VM 밖, 편차 참조) — AC-2.4처럼 외부 대상에 의존하는 검증이 간헐 실패할 수 있음
 - SPEC §10 Q1~Q6: 사용자가 기본값 승인(2026-11-25)
 
@@ -20,7 +20,7 @@
 | 3 | GitOps 부트스트랩 | ✅ 완료 | 9/9 | – | `phase-3-done` | 2026-11-26 |
 | 4 | L4 로드밸런싱 | ✅ 완료 | 4/4 | 2/2 | `phase-4-done` | 2026-11-26 |
 | 5 | Online Boutique | ✅ 완료 | 8/8 | 1/1 | `phase-5-done` | 2026-11-26 |
-| 6 | L7 Gateway API | ⬜ | 0/9 | 0/1 | | |
+| 6 | L7 Gateway API | ✅ 완료 | 9/9 | 1/1 | `phase-6-done` | 2026-11-26 |
 | 7 | 관측 가능성 | ⬜ | 0/9 | 0/1 | | |
 | 8 | 네트워크 격리 | ⬜ | 0/6 | 0/4 | | |
 | 9 | 복원력·최종 인수 | ⬜ | 0/7 | 0/1 | | |
@@ -32,12 +32,25 @@
 | 항목 | 값 | 측정 Phase |
 |---|---|---|
 | L2 VIP 장애 전환 시간 | `docker stop`(정상 종료) 기준: 새 노드 lease 인수 +0.2초, 옛 노드 종료 +0.4초, 그 후 첫 성공 +0.5초, 연속 실패 최장 3.5초. 단 죽은 백엔드 때문에 일부 요청(73회 중 21회)이 노드 NotReady 처리(+45.8초) 직후인 +46.9초까지 실패. **크래시(lease 미반납) 전환은 미측정** | 4 |
-| 카나리 실측 비율 (200회) | | 6 |
-| East-West L7 LB 전/후 max/min 비율 | | 6 |
+| 카나리 실측 비율 (200회) | 9.5% (canary 19 / stable 181, 전부 200). 시험 실행도 19/200 | 6 |
+| East-West L7 LB 전/후 max/min 비율 | 전 3.87·∞ → 후 1.00·1.00 (각 2회, 아래 표). **미채택**(ADR-0010) | 6 |
 | 알림 발화까지 시간 | | 7 |
 | 노드 장애 시 서비스 복구 시간 | | 9 |
 | 클린 재구축 소요 시간 | | 9 |
 | 클러스터 requests 합계 (CPU / Mem) | | 9 |
+
+### East-West L7 LB 측정 (AC-6.11, COULD)
+
+Hubble L7 플로우(목적지 측 REQUEST, gRPC 헬스체크 제외), 상품 페이지 150회 + loadgenerator.
+
+| 상태 | 레플리카별 요청 수 | max/min |
+|---|---|---|
+| L7 LB 끔 #1 | 338 / 158 / 612 | 3.87 |
+| L7 LB 끔 #2 | 161 / 0 / 970 | ∞ |
+| L7 LB 켬 #1 | 377 / 377 / 378 | 1.00 |
+| L7 LB 켬 #2 | 364 / 365 / 364 | 1.00 |
+
+정식 AC-6.11 실행(L7 LB 켬, 3번째 정책 적용)은 장애로 완료하지 못해 **FAIL**이었고, 되돌린 뒤의 정식 검증에서는 SKIP이다.
 
 ## 편차 · 결정 로그
 
@@ -85,6 +98,14 @@
 | 2026-11-26 | 5 | AC-5.9: boutique PSA restricted dry-run 경고 **0건**(대조군 kube-system 8건으로 평가 동작 확인). 목록 `tests/results/phase-5-psa-restricted-20261126T105032Z.log`(gitignored) | Phase 8에서 `boutique` enforce를 restricted로 올릴 때 위반 없음 예상 |
 | 2026-11-26 | 4 | `apps/l4-test`의 `maxSurge: 0` 주석 정정(`maxSkew: 1`이면 surge Pod도 배치 가능). 설정은 불변 | Phase 4에서 작성한 주석이 틀렸음 |
 | 2026-11-26 | 5 | 커밋 직전 `/verify`는 Phase 4 회귀(파괴적 테스트 제외, MUST 4/4, AC-4.5 SKIP)로 실행 | 새 매니페스트는 push 전에 검증 불가 |
+| 2026-11-26 | 6 | **SPEC 변경(승인됨, 반영)**: AC-6.11 측정을 Hubble 메트릭 → Hubble L7 플로우(측정 중 임시 L7 가시성 정책)로. ARCHITECTURE §12: `gateway` 네임스페이스 `gateway-access: "true"` | `httpV2` 메트릭에 `destination_pod` 없음. Selector 방식 리스너는 같은 네임스페이스 Route도 라벨 필요 |
+| 2026-11-26 | 6 | Gateway VIP는 `spec.addresses`(어노테이션 방식은 deprecated 예정). 앱 Route는 `https` 리스너에만 연결(`http`에 붙으면 301 대신 평문 응답). canary 식별은 backendRef 수준 `ResponseHeaderModifier`(`x-variant`) — Cilium 1.20.5 소스로 가중치 클러스터별 적용 확인 | Gateway Service eTP=Cluster(L2와 호환) |
+| 2026-11-26 | 6 | cert-manager 4개 컴포넌트 infra 배치(global toleration이 없어 컴포넌트별 지정). 루트 CA `rotationPolicy: Never`(1.18+ 기본 Always면 갱신 때 루트 키가 바뀜). `pki`·`gateway` 앱에 sync retry | webhook 준비 전 sync 실패 시 자동 sync는 같은 리비전을 재시도하지 않음 |
+| 2026-11-26 | 6 | **East-West L7 LB: 켜고 측정한 뒤 사용자 승인으로 되돌림(ADR-0010)**. `git revert` `dec3a6f`(서비스 어노테이션·클라이언트 재시작), `4394754`(Cilium values, diff 검토 후 수동 sync), `6826279`(측정 스크립트). **임시 L7 정책 적용·제거 시간대에 앱 장애**: 정식 AC-6.11 중 11:24:38~11:37:49(UTC, 정책 제거 후 약 2분 뒤 자연 회복), 일부 frontend Pod의 상품 페이지 응답 불가, recommendationservice 1회 재시작. L7 LB 켜기 전 측정 시간대에도 loadgenerator 실패 약 6건(정책 시각은 실행 순서 기준 추정). 정책 없는 L7 LB 상태는 1분 남짓만 관찰. 근본 원인 미확정. 장애 시 스크립트에 전체 시간 제한이 없어 정책이 약 11분 유지됐음(제가 부하 컨테이너를 종료해 제거) | 측정 방법은 제가 제안한 것. 정책이 없는 현재 상태는 상품 페이지 300/300 200 확인 |
+| 2026-11-26 | 6·5 | **Phase 5 회귀(`OBSERVE_SECONDS=60`): AC-5.6 FAIL(1.19%, 64/5382)**, 그 외 MUST 7/7·SHOULD 1/1 PASS. 실패 64건은 모두 L7 실험·롤백 시간대이며 롤백 후 약 500건 동안 새 실패 0. 누적 통계를 되돌리려고 loadgenerator를 재시작하지 않음(다음 재시작·재구축 때 초기화) | Phase 5의 ✅는 당시 판정 그대로. Phase 9 전에 loadgenerator가 재시작되지 않으면 AC-5.6이 계속 영향받음 |
+| 2026-11-26 | 5 | `tests/phase-5.sh`: Deployment 12개 고정 → 업스트림 12개를 이름으로 확인 + 전체 Available | canary 추가로 13개 |
+| 2026-11-26 | 6 | `tests/phase-6.sh` 작성 중 제 편집 실수로 파일이 잘려, 커밋 전에 원본으로 복구하며 강화: 실패한 요청이 직전 헤더를 재사용해 성공으로 집계될 수 있던 것, AC-6.2의 `jq` 오류가 PASS가 되던 것, AC-6.8이 응답 코드를 안 보던 것 수정 | 판정은 더 엄격해짐 |
+| 2026-11-26 | 6 | 코드·설정 커밋 직전 `/verify`는 매번 Phase 4 회귀(파괴적 제외, MUST 4/4, AC-4.5 SKIP)로 실행. `make lint`가 `charts.jetstack.io` EOF로 1회 실패 → 재실행 통과 | 외부 네트워크 일시 장애 |
 
 ## 세션 로그
 
@@ -97,3 +118,4 @@
 - 2026-11-26 Phase 3: `platform/argocd/values.yaml`, `platform/namespaces/`, `gitops/{root.yaml,projects/,apps/platform/}`(자식 앱 5개), `bootstrap/scripts/{gitops-bootstrap,wait-sync}.sh`, `tests/phase-3.sh` 작성, argocd CLI 추가. 첫 `make gitops-bootstrap`은 Cilium 인수 가드에서 멈춤(helm v3/v4 렌더 차이, 위 편차) → helm v4.2.1로 핀하고 사용자 승인 후 클러스터 재구축(`make up` 46분, 이 중 약 40분이 helm v4 hook 대기 → `--wait=legacy`로 수정). 재구축 후 인수: diff는 추적 메타데이터뿐, cilium Pod 불변. `make wait-sync` 통과(6개 앱 Synced/Healthy at `690fc7c`). `make verify-phase N=3` → **MUST 9/9 PASS**(FAIL 0, SKIP 0), 로그 `tests/results/phase-3-20261125T201309Z.log`. probe 커밋 4개(`90e141c`..`b4e0d93`)는 모두 revert됨. 남은 리스크: ① 외부 HTTPS 간헐 멈춤(AC-2.4 4회 중 3회 FAIL) — 환경 문제, Phase 9 `verify-all`에도 영향, ② `--wait=legacy` 수정 후의 전체 부트스트랩은 아직 실행 전, ③ 테스트 로그는 PASS인 AC의 세부 출력(선택 시간 등)을 남기지 않음, ④ Argo CD 관리자 초기 비밀번호는 `argocd-initial-admin-secret`(교체 권장, ARCHITECTURE §13), ⑤ Phase 3 검증은 실행마다 `main`에 커밋 4개를 추가함.
 - 2026-11-26 Phase 4: `platform/cilium-lb/`(풀 .10~.250, L2 정책), `apps/l4-test/`(agnhost 3 레플리카, `echo-cluster` .30, `echo-local` .31), 앱 `cilium-lb`·`l4-test`, `tests/phase-4.sh` 작성. 배포 후 8개 앱 Synced/Healthy. `DESTRUCTIVE=1 make verify-phase N=4`(사용자 승인) 3회 — 1·2차는 AC-4.5 테스트 결함(위 편차), **3차 MUST 4/4, SHOULD 2/2 PASS**(FAIL 0, SKIP 0). 실측: AC-4.3 30/30 200·백엔드 3개, AC-4.4 10/10 소스 보존, AC-4.6 external(`reserved:world`) → l4-test 플로우 확인. 장애 테스트 후 클러스터 정상(노드 5 Ready, 전 Pod Ready, 앱 8개 Healthy, 노드 IP 불변). 남은 리스크: ① 크래시 시 L2 전환 시간 미측정, ② 노드 장애 후 약 47초간 일부 요청 실패(Phase 9), ③ `echo-local`은 지원되지 않는 조합, ④ 외부 HTTPS 간헐 멈춤(Phase 2·3 편차) 지속, ⑤ `--wait=legacy` 이후 전체 부트스트랩 미실행.
 - 2026-11-26 Phase 5: `scripts/vendor-boutique.sh`, `apps/online-boutique/{upstream,overlays/lab}/`, 앱 `online-boutique`, `tests/phase-5.sh` 작성. 첫 동기화에서 9개 앱 Synced/Healthy(`5d5d0ea`). `make verify-phase N=5` → **MUST 8/8, SHOULD 1/1 PASS**(FAIL 0, SKIP 0), 로그 `tests/results/phase-5-20261126T104011Z.log`. 실측: 16 Pod 모두 app 풀, frontend·productcatalog 존별 1개, 주문 완료 마커 확인, 600초 재시작 0, Locust 1147건 실패 0%, 수동 scale 1 → selfHeal 2초·3 Ready 13초. 클러스터 전체 Running Pod requests 합계 약 2.85 vCPU / 1.9 GiB(참고, NFR-05는 AC-9.7에서 판정), 노드 컨테이너 메모리 합계 약 4.9 GiB / 23.5 GiB. 남은 리스크: ① redis-cart는 emptyDir 단일 레플리카 — 재시작·재스케줄 시 장바구니 소실, ② 서비스 대부분이 단일 레플리카(노드 장애 시 일시 중단, AC-9.2), ③ 트레이싱·카나리는 아직(Phase 7·6), ④ 네트워크 정책 없음(Phase 8), ⑤ 외부 HTTPS 간헐 멈춤 지속.
+- 2026-11-26 Phase 6: `platform/{cert-manager,pki,gateway}/`, `apps/online-boutique/{canary,routes}/`, 앱 `cert-manager`·`pki`·`gateway`·`boutique-routes`, `tests/phase-6.sh` 작성. 첫 동기화에서 13개 앱 Synced/Healthy. East-West L7 LB를 켜고 전/후 측정 → 임시 L7 정책 적용 중 장애 → 사용자 승인으로 되돌림(ADR-0010, cilium 수동 sync 2회: 활성·복원, diff 검토). `make verify-phase N=6` → **MUST 9/9, SHOULD 1/1 PASS, AC-6.11 SKIP**, 로그 `tests/results/phase-6-20261126T120000Z.log`. 실측: Gateway `.10` Accepted·Programmed, 사설 CA 검증(CA 없이 curl exit 60), 301, 호스트 라우팅 200/200/404, canary 19/200, `x-canary: always` 20/20, Hubble `reserved:ingress` → frontend, 라벨 없는 NS Route는 `NotAllowedByListeners`. 남은 리스크: ① **Phase 8 착수 전 확인 필요**: `rollOutCiliumPods`가 없어 `policyAuditMode` 같은 Cilium ConfigMap 변경은 수동 sync 후에도 agent에 적용되지 않음, ② L7 정책 적용·제거 시 트래픽 중단이 L7 LB 없이도 소수 관찰됨 → Phase 8에서 정책 적용 시 loadgenerator 실패 관찰, ③ loadgenerator 누적 실패율 1%대(AC-5.6), ④ Hubble UI는 인증 없이 Gateway에 노출(ARCHITECTURE §13, 실습 한정), ⑤ 타임아웃은 설정만 확인(만료 동작 미검증).

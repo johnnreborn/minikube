@@ -222,7 +222,7 @@ flowchart LR
 - **kube-system의 hubble-ui**는 kube-system에 라벨을 주는 대신 `gateway` 네임스페이스의 HTTPRoute + kube-system의 `ReferenceGrant`로 노출한다(교차 네임스페이스 참조 실습).
 - **TLS**: cert-manager의 SelfSigned → 사설 루트 CA → CA ClusterIssuer → `*.boutique.test` 와일드카드 인증서. 테스트는 CA 파일로 검증하며 `-k`를 쓰지 않는다.
 - **L7 기능**: Host 라우팅, HTTP→HTTPS 리다이렉트, 가중치 카나리(90/10), 헤더 기반 강제 카나리, 요청 타임아웃, 응답 헤더 조작.
-- **(선택) East-West L7 LB**: Go gRPC 클라이언트는 장수명 HTTP/2 연결 하나를 재사용하므로 L4 LB로는 productcatalogservice 레플리카 간 부하가 쏠린다. Service 어노테이션 `service.cilium.io/lb-l7: enabled`로 Envoy 기반 요청 단위 분산을 비교 실험한다.
+- **(선택) East-West L7 LB**: Go gRPC 클라이언트는 장수명 HTTP/2 연결 하나를 재사용하므로 L4 LB로는 productcatalogservice 레플리카 간 부하가 쏠린다. Service 어노테이션 `service.cilium.io/lb-l7: enabled`로 Envoy 기반 요청 단위 분산을 비교 실험한다. **결과: 분산은 개선됐으나 L7 정책 적용 중 장애가 나 채택하지 않음(ADR-0010).**
 
 ## 8. 네트워크 격리 모델
 
@@ -467,3 +467,4 @@ online-boutique-platform/
 | 0007 | Online Boutique 매니페스트 벤더링 + Kustomize overlay |
 | 0008 | 네트워크 정책: 표준 NP 기본 거부 + CNP 허용 + 감사→집행 |
 | 0009 | Loki·Tempo 차트는 grafana-community 저장소 사용 |
+| 0010 | East-West L7 로드밸런싱(Cilium lb-l7)은 채택하지 않음 |
