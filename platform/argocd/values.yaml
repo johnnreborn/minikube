@@ -23,6 +23,11 @@ configs:
   params:
     server.insecure: true                # TLS ends at the Gateway (ARCHITECTURE §13)
   cm:
+    # Git change detection (SPEC §5.8, AC-9.4): the repo-server caches the branch head for timeout.reconciliation too, so
+    # the worst case is cache + poll interval + jitter. The chart defaults (120s/60s, ~5 min) can miss the 5 minute
+    # revert limit (307s observed in Phase 9); 60s/30s keeps it around 2.5 minutes. No Git webhook reaches kind.
+    timeout.reconciliation: 60s
+    timeout.reconciliation.jitter: 30s
     # app-of-apps: let sync waves wait for child Application health (removed from Argo CD core in 1.8).
     # Source: Argo CD docs, operator-manual/health.md "Argo CD App" (argoproj.io/Application).
     resource.customizations.health.argoproj.io_Application: |
