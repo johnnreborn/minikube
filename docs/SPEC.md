@@ -454,6 +454,8 @@ Alertmanager: 실습용 `null` 수신자 기본 + (선택) 로컬 웹훅. 판정
 
 메트릭 이름은 고정 버전에서 실제 노출되는 이름으로 확정하고 규칙 파일에 주석으로 원천을 기록한다.
 
+**스크레이프 TLS 예외(ADR-0011)**: kubelet·kube-controller-manager·kube-scheduler는 서빙 인증서가 각자의 자체 서명 CA라 검증할 CA가 없다. 이 세 타깃에 한해 `insecureSkipVerify: true`를 허용하며, `make lint`가 그 밖의 TLS 검증 생략을 거부한다.
+
 ### 5.8 GitOps 사양
 
 - Argo CD 차트 values(`platform/argocd/values.yaml`): 모든 컴포넌트 infra 노드 배치, `configs.params."server.insecure": true`, `configs.cm`에 Application health customization, `resource.exclusions`에 Cilium 동적 리소스 추가(기본값 유지), 기본 tracking 방식(annotation) 유지.
@@ -692,7 +694,7 @@ flowchart LR
 | AC-7.1 | MUST | 관측 스택 Pod Ready, 비-DaemonSet은 infra 노드 | Pod 상태·nodeName |
 | AC-7.2 | MUST | Prometheus 활성 타깃 health=up 100%. 대상 잡: kubelet, cadvisor, node-exporter, kube-state-metrics, apiserver, coredns, controller-manager, scheduler, etcd, cilium-agent, cilium-operator, hubble, cilium-envoy, argocd 각 컴포넌트, cert-manager, loki, tempo, otel-collector, alloy | `/api/v1/targets` |
 | AC-7.3 | MUST | 다음 쿼리가 비어있지 않음: Hubble 플로우, Cilium 엔드포인트, Gateway(Envoy) 요청, `argocd_app_info`, boutique `kube_pod_info`, spanmetrics 호출 수 | `prom_query` |
-| AC-7.4 | MUST | Loki `{namespace="boutique"}` 최근 5분에 컨테이너 ≥ 12종 로그 | `loki_query` |
+| AC-7.4 | MUST | Loki `{namespace="boutique"}` 최근 5분에 서로 다른 `(app, container)` 조합 ≥ 12종 로그 | `loki_query` |
 | AC-7.5 | MUST | Tempo에 frontend → checkoutservice → paymentservice span을 포함한 트레이스 존재 | `tempo_search` + 트레이스 조회 |
 | AC-7.6 | MUST | `https://grafana.boutique.test` 200, 데이터소스 3종 health OK, Git 정의 대시보드 전부 존재 | Grafana API |
 | AC-7.7 | MUST | 사용자 정의 알림 규칙 ≥ 6개 로드, 장애 주입(paymentservice 0 레플리카) 10분 내 `BoutiqueDeploymentUnavailable`·`BoutiqueCheckoutErrorRateHigh` firing → 복구 후 resolved | `ALERTS` 시계열 |
@@ -921,3 +923,4 @@ COULD 항목 중 FR-NET-05, FR-L7-08, FR-ISO-11은 채택 시 AC를 추가한다
 | 1.0-draft+2 | 2026-11-26 | §5.1·§6.2(AC-2.6): Gateway API CRD v1.6.1 → v1.6.3(Cilium 1.20.5 문서 기준, Phase 0 편차 반영). §5.3: 차트 1.20.5에 없는 `externalIPs.enabled` 삭제(KPR=true면 externalIPs 항상 활성) — 사용자 승인 |
 | 1.0-draft+3 | 2026-11-26 | §5.4: L2 Announcements와 `externalTrafficPolicy: Local`의 공식 비호환 주의 문구 추가(`echo-local`은 실증용, 운영 Service는 Cluster) — 사용자 승인. ADR-0003 결과에 같은 내용 반영 |
 | 1.0-draft+4 | 2026-11-26 | §5.5·§6.6(AC-6.11): 측정을 Hubble 메트릭 → Hubble L7 플로우(측정 중 임시 L7 가시성 정책)로 변경. `httpV2` 메트릭에 `destination_pod`가 없고 L7 데이터는 가시성 정책이 필요 — 사용자 승인 |
+| 1.0-draft+5 | 2026-11-26 | §5.7: kubelet·controller-manager·scheduler 스크레이프 TLS 예외(ADR-0011). AC-7.4: "컨테이너 ≥ 12종" → 서로 다른 `(app, container)` 조합 ≥ 12(업스트림 컨테이너 이름은 3종뿐) — 사용자 승인 |

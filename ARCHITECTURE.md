@@ -468,3 +468,4 @@ online-boutique-platform/
 | 0008 | 네트워크 정책: 표준 NP 기본 거부 + CNP 허용 + 감사→집행 |
 | 0009 | Loki·Tempo 차트는 grafana-community 저장소 사용 |
 | 0010 | East-West L7 로드밸런싱(Cilium lb-l7)은 채택하지 않음 |
+| 0011 | kubelet·controller-manager·scheduler 스크레이프 TLS 검증 생략(3개 타깃 예외) |
