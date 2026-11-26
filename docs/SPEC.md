@@ -364,6 +364,10 @@ spec:
 l4-test (`apps/l4-test`, ns `l4-test`): agnhost `netexec` 3 레플리카(존 분산), Service 2개
 — `echo-cluster`(eTP=Cluster, VIP .30), `echo-local`(eTP=Local, VIP .31). `/hostname`, `/clientip` 엔드포인트로 분산과 소스 IP 보존을 판정.
 
+> **주의:** Cilium 1.20 문서(`network/l2-announcements.rst`, Limitations)는 L2 Announcements가 `externalTrafficPolicy: Local`과 **호환되지 않는다**고 명시한다. L2 리더 선출이 로컬 백엔드 유무를 보지 않아, 백엔드 없는 노드가 VIP에 응답하면 트래픽이 drop된다.
+> `echo-local`은 **모든 L2 후보 노드(app 풀 3대)에 Ready 백엔드가 있을 때만 성립하는 실증용**이다(존 분산 `DoNotSchedule`). 한 노드의 백엔드가 Ready가 아닌 동안에는 `.31`이 끊길 수 있다.
+> 운영 대상 Service(Gateway `edge`, `frontend-external`)는 `Cluster`만 사용한다.
+
 ### 5.5 L7 사양
 
 | 리소스 | 네임스페이스 | 핵심 설정 |
@@ -915,3 +919,4 @@ COULD 항목 중 FR-NET-05, FR-L7-08, FR-ISO-11은 채택 시 AC를 추가한다
 | 1.0-draft | 2026-11-14 | 최초 작성 |
 | 1.0-draft+1 | 2026-11-25 | §2.3·§5.1: Loki/Tempo 차트 저장소를 grafana-community로 변경(사용자 승인, ADR-0009) |
 | 1.0-draft+2 | 2026-11-26 | §5.1·§6.2(AC-2.6): Gateway API CRD v1.6.1 → v1.6.3(Cilium 1.20.5 문서 기준, Phase 0 편차 반영). §5.3: 차트 1.20.5에 없는 `externalIPs.enabled` 삭제(KPR=true면 externalIPs 항상 활성) — 사용자 승인 |
+| 1.0-draft+3 | 2026-11-26 | §5.4: L2 Announcements와 `externalTrafficPolicy: Local`의 공식 비호환 주의 문구 추가(`echo-local`은 실증용, 운영 Service는 Cluster) — 사용자 승인. ADR-0003 결과에 같은 내용 반영 |

@@ -19,4 +19,5 @@ kind에는 클라우드 LB가 없다. LoadBalancer Service의 VIP를 할당하�
 ## 결과
 - (+) 구성요소 추가 없음, 장애 전환이 Kubernetes Lease로 관측 가능
 - (−) L2 모드는 VIP당 단일 응답 노드(수평 확장 없음), ARP 캐시로 인한 전환 지연
+- (−) L2 Announcements는 `externalTrafficPolicy: Local`과 공식 비호환(Cilium 1.20 문서 Limitations). l4-test `echo-local`은 모든 L2 후보 노드에 Ready 백엔드가 있을 때만 성립하는 실증용이며, 운영 Service는 `Cluster`만 쓴다. 소스 IP 보존이 운영 요구가 되면 BGP 또는 DSR을 별도 검토한다
 - (−) 서브넷 충돌 가능성 → preflight 탐지
