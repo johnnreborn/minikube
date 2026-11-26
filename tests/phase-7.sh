@@ -244,7 +244,9 @@ check_cilium() {
   echo "cilium app: $sync/$health"
   ds=$(k -n kube-system get controllerrevisions -l k8s-app=cilium -o json | jq '[.items[].revision] | max')
   op=$(k -n kube-system get deploy cilium-operator -o jsonpath='{.metadata.annotations.deployment\.kubernetes\.io/revision}')
-  if [[ -s "$CACHE_DIR/phase7-cilium-ds-revision-before" ]]; then
+  # the snapshot taken before Phase 7's sync only describes the cluster it was taken on
+  local created; created=$(k get ns kube-system -o jsonpath='{.metadata.creationTimestamp}')
+  if [[ -s "$CACHE_DIR/phase7-cilium-ds-revision-before" && "$(cat "$CACHE_DIR/phase7-cilium-sync-before")" > "$created" ]]; then
     bds=$(cat "$CACHE_DIR/phase7-cilium-ds-revision-before"); bop=$(cat "$CACHE_DIR/phase7-cilium-operator-revision-before")
     since=$(cat "$CACHE_DIR/phase7-cilium-sync-before")
     late=$(k -n kube-system get pods -l app.kubernetes.io/part-of=cilium -o json | jq --arg t "$since" \

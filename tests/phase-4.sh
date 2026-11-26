@@ -209,6 +209,10 @@ PY
   wait_for 300 node_recovered "$old" "$t_start" || { echo "$old and its pods did not become Ready again (fresh status) within 300s"; k get pods -A --field-selector "spec.nodeName=$old"; return 1; }
   local t_rec=$(( $(date -u +%s) - t_start ))
   wait_for 240 bash -c "[[ \"\$(kubectl --context $CTX -n $NS get deploy echo -o jsonpath='{.status.readyReplicas}')\" == 3 ]]" || { echo "echo not 3/3 after restart"; return 1; }
+  # apps moved off the dead node stay in the other zones: even them out again (later phases check one pod per zone)
+  wait_for 240 bash -c "kubectl --context $CTX -n boutique wait --for=condition=Available deploy --all --timeout=5s >/dev/null 2>&1" ||
+    { echo "boutique deployments not Available after the node came back"; return 1; }
+  rebalance_zones boutique frontend productcatalogservice currencyservice cartservice frontend-canary || return 1
   report "recovery: $old and all its pods Ready ${t_rec}s after 'docker start' (fresh transitions), echo 3/3; node IP before=$ip_before after=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$old")"
   python3 -I -c 'import sys; sys.exit(0 if float(sys.argv[1]) <= 30 else 1)' "$resume"
 }

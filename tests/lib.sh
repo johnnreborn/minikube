@@ -12,6 +12,7 @@
 #   prom_query / loki_query / tempo_search  query via a temporary port-forward
 #   hubble_expect <hubble-observe-filter> <VERDICT> [window]   assert a recent flow with that verdict exists
 #   suspend_app / resume_app <app>          freeze Argo CD reconciliation for fault injection (§7.4); restored by trap
+#   rebalance_zones <ns> <app...>           after a node-failure test, move pods back so every zone-spread app is even
 # Every temporary resource carries ac-test=true and is removed by the EXIT trap.
 # shellcheck shell=bash
 
@@ -202,6 +203,35 @@ suspend_app() {
 }
 resume_app() {
   kubectl -n argocd annotate application "$1" argocd.argoproj.io/skip-reconcile- >/dev/null 2>&1 || true
+}
+
+# ---- node-failure cleanup ----------------------------------------------------------------------
+# Spread constraints are only applied when a pod is scheduled: after a node failure the replacement pods stay in the
+# surviving zones (ADR-0013). Delete the newest pod of the fullest zone until every zone differs by at most one, waiting
+# for each replacement to be Ready. Test cleanup only.
+rebalance_zones() {
+  local ns=$1 app victim i; shift
+  for app in "$@"; do
+    for i in 1 2 3; do
+      victim=$(_surplus_pod "$ns" "$app") || return 1
+      [[ -n "$victim" ]] || break
+      echo "rebalance: deleting $ns/$victim ($app is unevenly spread over the zones)"
+      kubectl -n "$ns" delete pod "$victim" --wait=true >/dev/null || return 1
+      kubectl -n "$ns" rollout status "deploy/$app" --timeout=180s >/dev/null || return 1
+    done
+    [[ -z "$(_surplus_pod "$ns" "$app")" ]] || { echo "$app still unevenly spread after rebalancing"; return 1; }
+  done
+}
+_surplus_pod() {  # <ns> <app> → name of one pod to move, empty if the zones are even
+  local zones pods
+  zones=$(kubectl get nodes -l topology.kubernetes.io/zone -o json |
+    jq -c '[.items[] | {key: .metadata.name, value: .metadata.labels["topology.kubernetes.io/zone"]}] | from_entries') || return 1
+  pods=$(kubectl -n "$1" get pods -l "app=$2" -o json) || return 1
+  jq -r --argjson zones "$zones" '
+    [.items[] | select(.metadata.deletionTimestamp == null and (.spec.nodeName // "") != "" and $zones[.spec.nodeName])
+     | {zone: $zones[.spec.nodeName], name: .metadata.name, at: .metadata.creationTimestamp}] as $p
+    | [$zones[]] | unique | map(. as $z | [$p[] | select(.zone == $z)]) | sort_by(length)
+    | if (.[-1] | length) - (.[0] | length) > 1 then (.[-1] | sort_by(.at) | .[-1].name) else empty end' <<<"$pods"
 }
 
 # ---- images ----------------------------------------------------------------------------------

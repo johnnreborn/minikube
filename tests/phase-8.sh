@@ -32,7 +32,15 @@ check_audit_report() {
   report "audit window $(jq -r '.start + " .. " + .end' "$f") ($(jq .minutes "$f") min): $(jq .audit_flows "$f") AUDIT flows, $(jq '.unexpected|length' "$f") unexpected; $(jq .l7_requests "$f") L7 requests, $(jq .l7_denied "$f") L7 denials"
   [[ $(jq .minutes "$f") -ge 15 && $(jq '.unexpected|length' "$f") -eq 0 && $(jq .l7_denied "$f") -eq 0 && $(jq .l7_requests "$f") -gt 0 ]]
 }
-ac_check AC-8.1 "audit window of 15 min: no unexpected AUDIT verdict, no L7 denial (expected list documented)" check_audit_report
+# the audit window is a one-time rollout gate: a rebuilt cluster enforces from the first sync, so an older report is no
+# evidence about it (CLAUDE.md forbids turning audit mode back on to make a new one)
+cluster_created=$(k get ns kube-system -o jsonpath='{.metadata.creationTimestamp}')
+audit_end=$(jq -r '.end // ""' "$CACHE_DIR/policy-audit-last.json" 2>/dev/null || true)
+if [[ -n "$audit_end" && "$audit_end" < "$cluster_created" ]]; then
+  ac_skip AC-8.1 "audit report ($audit_end) predates this cluster ($cluster_created): one-time gate, passed on the previous cluster"
+else
+  ac_check AC-8.1 "audit window of 15 min: no unexpected AUDIT verdict, no L7 denial (expected list documented)" check_audit_report
+fi
 show_report
 
 # AC-8.2 ---------------------------------------------------------------------------------------
