@@ -132,7 +132,7 @@ node_recovered() {  # <node> <restart-epoch>: node Ready and every pod on it Rea
 probe_ok_streak() { [[ "$(docker logs --tail 20 ac-failover-probe 2>&1 | grep -c '^200$')" == 20 ]]; }
 lease_holder() { k -n kube-system get lease "$LEASE" -o jsonpath='{.spec.holderIdentity}' 2>/dev/null; }
 check_failover() {
-  local old new="" t0 t_holder="" t_notready="" t_start ip_before log res
+  local old new="" t0 moved="" t_notready="" t_start ip_before log res
   k wait --for=condition=Ready nodes --all --timeout=60s >/dev/null || { echo "precondition: not all nodes Ready"; return 1; }
   old=$(lease_holder); [[ "$old" == boutique-worker[234] ]] || { echo "unexpected lease holder '$old' (must be an app worker)"; return 1; }
   ip_before=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$old")
@@ -149,10 +149,10 @@ check_failover() {
   local end=$((SECONDS + 60))
   while (( SECONDS < end )); do
     new=$(lease_holder)
-    if [[ -n "$new" && "$new" != "$old" ]]; then t_holder=$(date +%s.%N); break; fi
+    if [[ -n "$new" && "$new" != "$old" ]]; then moved=1; break; fi
     sleep 0.5
   done
-  [[ -n "$t_holder" ]] || { echo "lease did not move within 60s"; return 1; }
+  [[ -n "$moved" ]] || { echo "lease did not move within 60s"; return 1; }
   # keep probing until the node controller has noticed the dead node (its backend is then removed) and 20 probes in a
   # row succeed: this measures how long connections keep failing, and guarantees the API status is no longer stale
   end=$((SECONDS + 150))
@@ -164,32 +164,44 @@ check_failover() {
   sleep 10
   wait_for 90 probe_ok_streak || { echo "no 20 consecutive successful probes within 90s after NotReady"; return 1; }
   log=$(docker logs --timestamps ac-failover-probe 2>&1); docker rm -f ac-failover-probe >/dev/null
-  res=$(python3 -I - "$t0" "$t_holder" <<'PY' "$log"
+  # exact times from the sources of truth - the polling above cannot start before the blocking `docker stop` returns
+  local t_down t_acq
+  t_down=$(date -u -d "$(docker inspect -f '{{.State.FinishedAt}}' "$old")" +%s.%N)
+  t_acq=$(date -u -d "$(k -n kube-system get lease "$LEASE" -o jsonpath='{.spec.acquireTime}')" +%s.%N)
+  res=$(python3 -I - "$t0" "$t_down" "$t_acq" "$log" <<'PY'
 import sys, datetime
-t0, th, log = float(sys.argv[1]), float(sys.argv[2]), sys.argv[3]
+t0, down, acq, log = float(sys.argv[1]), float(sys.argv[2]), float(sys.argv[3]), sys.argv[4]
 rows = []
 for line in log.splitlines():
     ts, code = line.split(' ', 1)
-    ts = ts.rstrip('Z'); base, _, frac = ts.partition('.')
+    base, _, frac = ts.rstrip('Z').partition('.')
     t = datetime.datetime.fromisoformat(base).replace(tzinfo=datetime.timezone.utc).timestamp() + float('0.' + (frac or '0'))
     rows.append((t - t0, code.strip()))
-after = [r for r in rows if r[0] >= 0]
-first_fail = next((t for t, c in after if c != '200'), None)
-if first_fail is None:
-    print("NOOUTAGE"); sys.exit()
-resume = next((t for t, c in after if t > first_fail and c == '200'), None)
+down, acq = down - t0, acq - t0
+if acq < 0:
+    print("STALE_LEASE"); sys.exit()
+# "VIP answers again" = first success once the old node is completely down AND the new holder owns the lease
+resume = next((t for t, c in rows if t > max(down, acq) and c == '200'), None)
 if resume is None:
     print("NORESUME"); sys.exit()
-fails_after = [t for t, c in after if t > resume and c != '200']
-n_after = sum(1 for t, c in after if t > resume)
-print(f"{first_fail:.1f} {resume:.1f} {th - t0:.1f} {len(fails_after)} {n_after} {max(fails_after) if fails_after else 0:.1f}")
+after = [(t, c) for t, c in rows if t >= 0]
+# longest run of consecutive failed probes = upper bound of a total VIP blackout (one dead backend of 3 gives short runs)
+run_start, longest = None, 0.0
+for t, c in after:
+    if c != '200':
+        run_start = t if run_start is None else run_start
+    elif run_start is not None:
+        longest, run_start = max(longest, t - run_start), None
+fails = [t for t, c in after if c != '200']
+print(f"{acq:.1f} {down:.1f} {resume:.1f} {longest:.1f} {len(fails)} {len(after)} {max(fails) if fails else 0:.1f}")
 PY
 )
   echo "analysis: $res"
-  [[ "$res" != NOOUTAGE && "$res" != NORESUME ]] || return 1
-  read -r ff resume hold fa na last <<<"$res"
-  report "L2 failover: holder $old -> $new; lease moved after ${hold}s; first failure at +${ff}s, VIP answered again at +${resume}s (from 'docker stop' command)"
-  report "after the VIP resumed: $fa of $na probes still failed; last failure at +${last}s, node marked NotReady at +$(python3 -I -c 'import sys; print(f"{float(sys.argv[1])-float(sys.argv[2]):.1f}")' "$t_notready" "$t0")s; then 20 successes in a row"
+  [[ "$res" != STALE_LEASE && "$res" != NORESUME ]] || return 1
+  local acq down resume longest nf n last
+  read -r acq down resume longest nf n last <<<"$res"
+  report "L2 failover: holder $old -> $new (times from the 'docker stop' command): lease acquired by $new at +${acq}s, old node fully down at +${down}s, first success afterwards at +${resume}s"
+  report "longest run of consecutive failed probes: ${longest}s; failed probes in total: $nf of $n, last at +${last}s; node marked NotReady at +$(python3 -I -c 'import sys; print(f"{float(sys.argv[1])-float(sys.argv[2]):.1f}")' "$t_notready" "$t0")s, then 20 successes in a row"
   # restore and check recovery
   t_start=$(date -u +%s)
   docker start "$old" >/dev/null || return 1
