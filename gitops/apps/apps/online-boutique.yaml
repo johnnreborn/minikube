@@ -1,0 +1,24 @@
+# wave 2: the application, in the restricted `apps` project (SPEC §6.5).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: online-boutique
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: apps
+  source:
+    repoURL: https://github.com/johnnreborn/minikube
+    targetRevision: main
+    path: apps/online-boutique/overlays/lab
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: boutique
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - PruneLast=true

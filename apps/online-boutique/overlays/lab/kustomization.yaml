@@ -1,0 +1,26 @@
+# Lab overlay for the vendored Online Boutique (SPEC §5.9). Tracing (Phase 7) and the canary (Phase 6) are separate.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: boutique
+resources:
+  - ../../upstream
+  - frontend-pdb.yaml
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: online-boutique
+    includeSelectors: false     # selectors are immutable and upstream's `app:` selectors stay as they are
+    includeTemplates: true
+images:
+  # upstream ships the floating `redis:alpine`; pinned to versions.env REDIS_IMAGE
+  - name: redis
+    newTag: 8.12.0-alpine
+patches:
+  # every workload: PSA restricted needs seccompProfile (the rest of the securityContext is already upstream), and no
+  # service calls the Kubernetes API (ARCHITECTURE §13)
+  - target:
+      kind: Deployment
+    path: patches/all-deployments.yaml
+  - path: patches/frontend.yaml
+  - path: patches/productcatalogservice.yaml
+  - path: patches/frontend-external.yaml
+  - path: patches/loadgenerator.yaml

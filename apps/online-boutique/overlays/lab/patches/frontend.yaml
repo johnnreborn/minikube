@@ -1,0 +1,29 @@
+# 3 replicas, one per zone (AC-5.2). matchLabelKeys spreads each rollout revision on its own, so the old and new pods
+# of a rolling update cannot leave the new revision unbalanced.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+spec:
+  replicas: 3
+  template:
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: frontend
+          matchLabelKeys:
+            - pod-template-hash
+      # reschedule quickly when a node dies (ARCHITECTURE §4); the default is 300s
+      tolerations:
+        - key: node.kubernetes.io/unreachable
+          operator: Exists
+          effect: NoExecute
+          tolerationSeconds: 30
+        - key: node.kubernetes.io/not-ready
+          operator: Exists
+          effect: NoExecute
+          tolerationSeconds: 30

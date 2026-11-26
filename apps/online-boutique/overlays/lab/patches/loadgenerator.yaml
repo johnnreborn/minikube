@@ -1,0 +1,24 @@
+# lighter load for the lab (upstream USERS=10). The init container has no resources upstream (AC-5.7).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loadgenerator
+spec:
+  template:
+    spec:
+      initContainers:
+        - name: frontend-check
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 32Mi
+      containers:
+        - name: main
+          env:
+            - name: USERS
+              value: "5"
+            - name: RATE
+              value: "1"

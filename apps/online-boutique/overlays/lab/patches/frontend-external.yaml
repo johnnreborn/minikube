@@ -1,0 +1,7 @@
+# L4 path stays available next to the Gateway (ARCHITECTURE §5.1); externalTrafficPolicy stays Cluster (SPEC §5.4)
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-external
+  annotations:
+    lbipam.cilium.io/ips: "172.30.250.20"
