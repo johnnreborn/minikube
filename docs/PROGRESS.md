@@ -5,8 +5,8 @@
 
 ## 현재 상태
 
-- 현재 Phase: **4 — L4 로드밸런싱** (⬜ 대기, Phase 3 ✅ 완료 2026-11-26)
-- 다음 행동: 사용자 확인 후 Phase 4 착수 (`/phase 4`). 이제 클러스터 변경은 commit + push로만 반영된다(Argo CD가 `origin/main`을 본다). Cilium은 수동 sync
+- 현재 Phase: **5 — Online Boutique** (⬜ 대기, Phase 4 ✅ 완료 2026-11-26)
+- 다음 행동: 사용자 확인 후 Phase 5 착수 (`/phase 5`). 이제 클러스터 변경은 commit + push로만 반영된다(Argo CD가 `origin/main`을 본다). Cilium은 수동 sync
 - 차단 요소: 없음. 알려진 환경 문제: 외부 인터넷 HTTPS 간헐 멈춤(WSL VM 밖, 편차 참조) — AC-2.4처럼 외부 대상에 의존하는 검증이 간헐 실패할 수 있음
 - SPEC §10 Q1~Q6: 사용자가 기본값 승인(2026-11-25)
 
@@ -18,7 +18,7 @@
 | 1 | 멀티노드 클러스터 | ✅ 완료 | 5/5 | 1/1 | `phase-1-done` | 2026-11-25 |
 | 2 | CNI (Cilium) | ✅ 완료 | 8/8 | – | `phase-2-done` | 2026-11-26 |
 | 3 | GitOps 부트스트랩 | ✅ 완료 | 9/9 | – | `phase-3-done` | 2026-11-26 |
-| 4 | L4 로드밸런싱 | ⬜ | 0/4 | 0/2 | | |
+| 4 | L4 로드밸런싱 | ✅ 완료 | 4/4 | 2/2 | `phase-4-done` | 2026-11-26 |
 | 5 | Online Boutique | ⬜ | 0/8 | 0/1 | | |
 | 6 | L7 Gateway API | ⬜ | 0/9 | 0/1 | | |
 | 7 | 관측 가능성 | ⬜ | 0/9 | 0/1 | | |
@@ -31,7 +31,7 @@
 
 | 항목 | 값 | 측정 Phase |
 |---|---|---|
-| L2 VIP 장애 전환 시간 | | 4 |
+| L2 VIP 장애 전환 시간 | `docker stop`(정상 종료) 기준: 새 노드 lease 인수 +0.2초, 옛 노드 종료 +0.4초, 그 후 첫 성공 +0.5초, 연속 실패 최장 3.5초. 단 죽은 백엔드 때문에 일부 요청(73회 중 21회)이 노드 NotReady 처리(+45.8초) 직후인 +46.9초까지 실패. **크래시(lease 미반납) 전환은 미측정** | 4 |
 | 카나리 실측 비율 (200회) | | 6 |
 | East-West L7 LB 전/후 max/min 비율 | | 6 |
 | 알림 발화까지 시간 | | 7 |
@@ -72,6 +72,13 @@
 | 2026-11-26 | 2·3 | **AC-2.4 외부 HTTPS 실패 원인 조사(패킷 캡처)**: Phase 3 커밋 전 회귀(`T173936Z`)와 재구축 후(`T195038Z`)에도 FAIL — 지금까지 4회 중 3회 FAIL, 매번 Cloudflare 대상 동작 1~2건. 노드(worker2)와 WSL 호스트에서 동시 캡처하며 Pod → 1.1.1.1/1.0.0.1 HTTPS 880회 → 7회 실패, 7건 모두 Pod가 보낸 패킷은 전부 WSL eth0 밖으로 나갔고 WSL eth0에 도착한 패킷은 전부 Pod에 도달. 서버의 FIN은 `ack 1543`(ClientHello 이후 바이트 미수신). 실패는 수 초~35초 구간에 몰림 | **손실 위치는 WSL VM 밖**(Windows NAT·보안 소프트웨어·VPN·공유기·ISP·Cloudflare 중 하나, 미특정). Cilium·Docker·kind 구간 손실 0. 사용자 결정: 기록하고 Phase 3 계속. 기준·대상·플래그는 바꾸지 않음. Phase 2의 ✅는 당시 판정 그대로 |
 | 2026-11-26 | 3 | 커밋 직전 `/verify`는 Phase 1·2 회귀로 실행 | Phase 3 변경은 push 전에는 클러스터에 반영되지 않아 검증할 수 없음 |
 | 2026-11-26 | 3 | `make lint`의 helm template이 `argoproj.github.io` 차트 인덱스 타임아웃으로 1회 실패 → 재실행 통과 | 일시적 외부 네트워크(위 외부 HTTPS 문제와 같은 경로일 수 있음) |
+| 2026-11-26 | 4 | **SPEC 변경(승인됨, 반영)**: §5.4·ADR-0003에 L2 Announcements와 `externalTrafficPolicy: Local`의 공식 비호환 주의 추가. `echo-local`은 모든 L2 후보 노드에 Ready 백엔드가 있을 때만 성립하는 실증용, 운영 Service는 `Cluster`만 | Cilium 1.20.5 `l2-announcements.rst` Limitations. AC-4.4는 그대로(10/10 소스 보존) |
+| 2026-11-26 | 4 | **AC-4.5의 앞선 PASS 2회는 신뢰할 수 없음 → 테스트 수정 후 3차 결과만 유효**. ① 1차(`T100718Z`): `docker start` 1초 뒤에 회복 확인이 끝남 — 노드가 NotReady 처리되기 전이라 노드·Pod·replica 상태가 중단 전 값(실제로는 직후 worker4의 cilium·echo Pod가 Unknown). 실패 구간도 관측 창 안에서 끝나지 않음. ② 2차(`T101405Z`): 블로킹하는 `docker stop` 이후에 lease를 폴링해 "lease 이동 시간"이 사실은 정지 소요 시간(1차 0.8초, 2차 5.6초)이었고, 옛 노드가 꺼지기 전의 성공(+2.0초)을 VIP 재개로 계산. 수정: NotReady + 연속 20회 성공까지 관측, `docker start` 이후의 Ready 전이만 인정, lease `acquireTime`·컨테이너 `FinishedAt` 기준 판정 | 기준(30초)은 그대로, 판정은 더 엄격해짐. 최종 로그 `phase-4-20261126T101955Z.log` |
+| 2026-11-26 | 4 | `docker stop`은 정상 종료라 lease가 `leaseDuration`(3초)보다 빨리(약 0.1~0.2초) 이동 — cilium agent가 반납한 것으로 **추정**. 전원 장애(lease 만료)의 전환 시간은 측정하지 않음. 정지 소요 시간은 실행마다 달랐음(0.4~5.5초) | SPEC AC-4.5가 `docker stop`을 지정. Phase 9 AC-9.2에서 해석 시 주의 |
+| 2026-11-26 | 4 | eTP=Cluster VIP는 죽은 노드의 백엔드가 EndpointSlice에서 빠질 때까지(노드 NotReady, 약 46~47초) 일부 새 연결이 실패 → VIP 전환 30초와 **서비스 완전 복구 30초는 다름** | L2 전환과 무관한 Kubernetes 노드 장애 감지 지연. AC-9.2에서 다시 다룸 |
+| 2026-11-26 | 4 | `AGNHOST_IMAGE=registry.k8s.io/e2e-test-images/agnhost:2.63.0` 핀(Kubernetes 1.36.4가 쓰는 태그). `check-versions.sh`가 매니페스트 image를 `versions.env`의 `*_IMAGE`와 비교(음성 사례 확인) | CLAUDE.md "이미지 태그 불일치 시 lint 실패" — 이전에는 미검사 |
+| 2026-11-26 | 4 | 풀의 첫 주소 `.10`은 할당 가능(임시 Service가 받음). Cilium 문서의 "첫·마지막 IP 요청 금지" 문구는 start/stop 블록에는 해당하지 않음 | Phase 6 Gateway VIP .10에 영향 없음 |
+| 2026-11-26 | 4 | 커밋 직전 `/verify`는 Phase 1 회귀(5/5+1/1)로 실행. 테스트 커밋은 `/verify` 대상 아님 | 새 매니페스트는 push 전에 검증 불가 |
 
 ## 세션 로그
 
@@ -82,3 +89,4 @@
 - 2026-11-25 Phase 1: `bootstrap/kind/cluster.yaml`, `cluster-up.sh`(멱등), `down.sh`(확인 필수, 실행하지 않음), `tests/phase-1.sh` 작성. `make cluster-up` 최초 실행 약 71초(노드 이미지 pull 포함), 재실행은 모두 "already exists". `make verify-phase N=1` → 첫 실행 AC-1.2 FAIL(NotReady 조건 taint, 위 편차 참조) → 테스트 정의 수정 후 **MUST 5/5, SHOULD 1/1 PASS**. 로그: `tests/results/phase-1-20261125T133543Z.log`. 남은 리스크: 노드는 NotReady로 대기 중이며 Phase 2에서 Cilium이 Ready로 전환해야 함; Cilium 설치 시 `k8sServiceHost: boutique-control-plane`(노드 이름 DNS) 해석을 Phase 2에서 확인.
 - 2026-11-26 Phase 2: `platform/gateway-api-crds/`(v1.6.3 standard 7종), `platform/cilium/values.yaml`, `bootstrap/scripts/cni.sh`, `tests/phase-2.sh` 작성. `make cni` 1차 성공(helm 시작 → `cilium status` OK·전 노드 Ready까지 160초), 2차는 멱등(2초, Cilium Pod 이름·재시작 수 불변). `k8sServiceHost: boutique-control-plane` 해석 정상. `make verify-phase N=2`: 1차 MUST 7/8(AC-2.4, 위 편차), 2차 **MUST 8/8 PASS**(FAIL 0, SKIP 0). 로그: `tests/results/phase-2-20261125T162757Z.log`. 남은 리스크: ① 외부 대상 HTTPS 간헐 무응답 — 이후 외부 통신을 쓰는 테스트·이미지 pull에서 같은 증상 가능, ② `cni.sh`의 "Argo CD가 Cilium을 관리하면 건너뜀" 분기와 "CRD 후설치 시 operator 재시작" 분기는 실행된 적 없음(전자는 Phase 3에서 확인), ③ hubble-relay가 설치 직후 1회 재시작(peer 서비스 준비 전), 이후 추가 없음, ④ Cilium 롤백은 클러스터 재생성(`make down`은 사용자 확인 필요). 현재 노드 컨테이너 메모리 합계 약 4.6 GiB / 23.5 GiB.
 - 2026-11-26 Phase 3: `platform/argocd/values.yaml`, `platform/namespaces/`, `gitops/{root.yaml,projects/,apps/platform/}`(자식 앱 5개), `bootstrap/scripts/{gitops-bootstrap,wait-sync}.sh`, `tests/phase-3.sh` 작성, argocd CLI 추가. 첫 `make gitops-bootstrap`은 Cilium 인수 가드에서 멈춤(helm v3/v4 렌더 차이, 위 편차) → helm v4.2.1로 핀하고 사용자 승인 후 클러스터 재구축(`make up` 46분, 이 중 약 40분이 helm v4 hook 대기 → `--wait=legacy`로 수정). 재구축 후 인수: diff는 추적 메타데이터뿐, cilium Pod 불변. `make wait-sync` 통과(6개 앱 Synced/Healthy at `690fc7c`). `make verify-phase N=3` → **MUST 9/9 PASS**(FAIL 0, SKIP 0), 로그 `tests/results/phase-3-20261125T201309Z.log`. probe 커밋 4개(`90e141c`..`b4e0d93`)는 모두 revert됨. 남은 리스크: ① 외부 HTTPS 간헐 멈춤(AC-2.4 4회 중 3회 FAIL) — 환경 문제, Phase 9 `verify-all`에도 영향, ② `--wait=legacy` 수정 후의 전체 부트스트랩은 아직 실행 전, ③ 테스트 로그는 PASS인 AC의 세부 출력(선택 시간 등)을 남기지 않음, ④ Argo CD 관리자 초기 비밀번호는 `argocd-initial-admin-secret`(교체 권장, ARCHITECTURE §13), ⑤ Phase 3 검증은 실행마다 `main`에 커밋 4개를 추가함.
+- 2026-11-26 Phase 4: `platform/cilium-lb/`(풀 .10~.250, L2 정책), `apps/l4-test/`(agnhost 3 레플리카, `echo-cluster` .30, `echo-local` .31), 앱 `cilium-lb`·`l4-test`, `tests/phase-4.sh` 작성. 배포 후 8개 앱 Synced/Healthy. `DESTRUCTIVE=1 make verify-phase N=4`(사용자 승인) 3회 — 1·2차는 AC-4.5 테스트 결함(위 편차), **3차 MUST 4/4, SHOULD 2/2 PASS**(FAIL 0, SKIP 0). 실측: AC-4.3 30/30 200·백엔드 3개, AC-4.4 10/10 소스 보존, AC-4.6 external(`reserved:world`) → l4-test 플로우 확인. 장애 테스트 후 클러스터 정상(노드 5 Ready, 전 Pod Ready, 앱 8개 Healthy, 노드 IP 불변). 남은 리스크: ① 크래시 시 L2 전환 시간 미측정, ② 노드 장애 후 약 47초간 일부 요청 실패(Phase 9), ③ `echo-local`은 지원되지 않는 조합, ④ 외부 HTTPS 간헐 멈춤(Phase 2·3 편차) 지속, ⑤ `--wait=legacy` 이후 전체 부트스트랩 미실행.
