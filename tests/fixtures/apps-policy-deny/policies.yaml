@@ -1,0 +1,24 @@
+# AC-8.9 fixture: isolation objects that a temporary Application in the `apps` project tries to sync into boutique.
+# The AppProject blacklists them (FR-ISO-10), so neither object may ever exist. Not part of any real Application.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ac-test-apps-policy-deny
+spec:
+  podSelector:
+    matchLabels:
+      app: ac-test-none
+  policyTypes:
+    - Ingress
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: ac-test-apps-policy-deny
+spec:
+  endpointSelector:
+    matchLabels:
+      app: ac-test-none
+  ingress:
+    - fromEntities:
+        - world
