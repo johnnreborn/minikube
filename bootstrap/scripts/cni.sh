@@ -29,6 +29,8 @@ for f in "${VALUE_FILES[@]}"; do
   VALUE_ARGS+=(-f "$REPO_ROOT/$f")
 done
 k get nodes >/dev/null 2>&1 || die "cluster context $CONTEXT not reachable (run: make cluster-up)"
+CHART_DIR=$(mktemp -d)   # downloaded charts only: removed file by file, then the (empty) directory
+trap 'rm -f -- "${CHART_DIR:?}"/*.tgz; rmdir -- "${CHART_DIR:?}"' EXIT
 
 # --- guard: Argo CD already manages Cilium ------------------------------------------------------------------
 # capture first: `cmd | grep -q` under pipefail can fail with SIGPIPE
@@ -55,8 +57,8 @@ ok "Gateway API CRDs established ($(wc -l <<<"$gw_crds") CRDs)"
 # --- 2. Prometheus Operator CRDs (needed by the monitoring layer) --------------------------------------------
 log "Prometheus Operator CRDs (prometheus-operator-crds ${PROMETHEUS_OPERATOR_CRDS_CHART_VERSION})"
 # same annotation as the Argo CD Application: never prune a CRD
-helm template prometheus-operator-crds prometheus-operator-crds \
-  --repo "$PROMETHEUS_CHART_REPO" --version "$PROMETHEUS_OPERATOR_CRDS_CHART_VERSION" \
+crds_chart=$(pull_chart "$PROMETHEUS_CHART_REPO" prometheus-operator-crds "$PROMETHEUS_OPERATOR_CRDS_CHART_VERSION" "$CHART_DIR")
+helm template prometheus-operator-crds "$crds_chart" \
   --set-json 'crds.annotations={"argocd.argoproj.io/sync-options":"Prune=false"}' |
   k apply --server-side --field-manager=bootstrap -f - >/dev/null
 prom_crds=$(k get crd -o name | grep 'monitoring\.coreos\.com$' || true)
@@ -70,10 +72,10 @@ release_existed=false
 releases=$(helm --kube-context "$CONTEXT" -n "$NAMESPACE" list -q 2>/dev/null || true)
 grep -qx "$RELEASE" <<<"$releases" && release_existed=true
 
+cilium_chart=$(pull_chart "$CILIUM_CHART_REPO" cilium "$CILIUM_CHART_VERSION" "$CHART_DIR")
 log "helm upgrade --install $RELEASE (chart ${CILIUM_CHART_VERSION}, values ${VALUE_FILES[*]})"
 start=$SECONDS
-helm upgrade --install "$RELEASE" cilium \
-  --repo "$CILIUM_CHART_REPO" --version "$CILIUM_CHART_VERSION" \
+helm upgrade --install "$RELEASE" "$cilium_chart" \
   --kube-context "$CONTEXT" --namespace "$NAMESPACE" \
   "${VALUE_ARGS[@]}" --wait=legacy --timeout 10m   # helm v4: the default "watcher" strategy stalls --timeout per non-Job hook resource
 ok "helm release deployed in $((SECONDS - start))s"

@@ -45,11 +45,13 @@ fi
 if k -n "$ARGO_NS" get application argocd >/dev/null 2>&1; then
   ok "Argo CD manages itself (Application 'argocd') - helm install skipped"
 else
+  CHART_DIR=$(mktemp -d)
+  argocd_chart=$(pull_chart "$ARGOCD_CHART_REPO" argo-cd "$ARGOCD_CHART_VERSION" "$CHART_DIR")
   log "helm upgrade --install argocd (chart ${ARGOCD_CHART_VERSION}, values platform/argocd/values.yaml)"
-  helm upgrade --install argocd argo-cd \
-    --repo "$ARGOCD_CHART_REPO" --version "$ARGOCD_CHART_VERSION" \
+  helm upgrade --install argocd "$argocd_chart" \
     --kube-context "$CONTEXT" --namespace "$ARGO_NS" --create-namespace \
     -f platform/argocd/values.yaml --wait=legacy --timeout 10m   # helm v4 "watcher" waits --timeout per non-Job hook (redis-secret-init: 4 x 10 min)
+  rm -f -- "${CHART_DIR:?}"/*.tgz; rmdir -- "${CHART_DIR:?}"
   ok "Argo CD installed"
 fi
 
@@ -94,8 +96,8 @@ all_healthy() {
     [[ "$name" == cilium || "$s" == Synced ]] || return 1    # cilium is manual: OutOfSync until adopted below
   done
 }
-log "waiting for root and child Applications to become Healthy (up to 15 min)"
-end=$((SECONDS + 900))
+log "waiting for root and child Applications to become Healthy (up to 25 min: a cold start pulls every image)"
+end=$((SECONDS + 1500))
 until all_healthy; do
   (( SECONDS < end )) || { k -n "$ARGO_NS" get applications >&2; die "Applications did not become Healthy in time"; }
   sleep 10
@@ -123,6 +125,8 @@ else
   kubectl --kubeconfig "$KCFG" config set-context --current --namespace "$ARGO_NS" >/dev/null
   acd() { KUBECONFIG="$KCFG" argocd --core "$@"; }
 
+  # the argocd app may just have updated itself (repo-server restart): never diff a half-rendered comparison
+  wait_app_comparable "$CONTEXT" cilium 600 >/dev/null || die "cilium app not comparable - not adopting"
   diff_out=$(acd app diff cilium --refresh --exit-code=false 2>&1) || die "argocd app diff failed: $diff_out"
   # allowed: resource headers, diff hunk markers, and added/removed lines that only carry Argo CD tracking metadata
   unexpected=$(grep -E '^[<>]' <<<"$diff_out" | grep -v -E '^[<>][[:space:]]+(annotations:[[:space:]]*(\{\})?|argocd\.argoproj\.io/tracking-id:.*)$' || true)

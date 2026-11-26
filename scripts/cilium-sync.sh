@@ -19,20 +19,8 @@ kubectl config view --minify --flatten --context "$CTX" >"$KCFG"
 kubectl --kubeconfig "$KCFG" config set-context --current --namespace argocd >/dev/null
 acd() { KUBECONFIG="$KCFG" argocd --core "$@"; }
 
-# a fresh comparison without errors (retry: repo-server may be fetching the chart)
-k -n argocd annotate application "$APP" argocd.argoproj.io/refresh=hard --overwrite >/dev/null
-end=$((SECONDS + 300)); state=""
-while (( SECONDS < end )); do
-  sleep 10
-  j=$(k -n argocd get application "$APP" -o json)
-  [[ "$(jq -r '.metadata.annotations["argocd.argoproj.io/refresh"] // ""' <<<"$j")" == "" ]] || continue
-  cond=$(jq -r '[.status.conditions[]? | .type + ": " + .message] | join("; ")' <<<"$j")
-  prune=$(jq '[.status.resources[]? | select(.requiresPruning == true)] | length' <<<"$j")
-  state=$(jq -r '.status.sync.status' <<<"$j")
-  [[ -z "$cond" && "$prune" == 0 && "$state" =~ ^(Synced|OutOfSync)$ ]] && break
-  state=""
-done
-[[ -n "$state" ]] || die "cilium app not comparable (conditions: ${cond:-?}; resources marked for pruning: ${prune:-?}) - do NOT sync"
+# a fresh comparison without errors and nothing marked for pruning (retry: repo-server may be fetching the chart)
+state=$(wait_app_comparable "$CTX" "$APP" 300) || die "cilium app not comparable - do NOT sync"
 ok "comparison clean: sync=$state, no conditions, 0 resources marked for pruning"
 [[ "$state" == OutOfSync ]] || { ok "nothing to sync"; exit 0; }
 

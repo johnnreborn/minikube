@@ -22,6 +22,7 @@ cluster-up: ## docker network + kind cluster (Phase 1)
 cni: ## Gateway API CRDs -> Cilium bootstrap (Phase 2)
 	@test -x bootstrap/scripts/cni.sh || { echo "cni: not implemented before Phase 2" >&2; exit 1; }
 	@bash bootstrap/scripts/cni.sh
+	@bash bootstrap/scripts/coredns-spread.sh
 
 gitops-bootstrap: ## Argo CD + repo secret + root app (Phase 3)
 	@test -x bootstrap/scripts/gitops-bootstrap.sh || { echo "gitops-bootstrap: not implemented before Phase 3" >&2; exit 1; }

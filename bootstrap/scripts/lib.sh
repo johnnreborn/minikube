@@ -47,3 +47,34 @@ host_arch() {
     *) uname -m ;;
   esac
 }
+
+# pull_chart <repo-url> <chart> <version> <dest-dir> → prints the .tgz path. Retries: a first-time bootstrap must not
+# fail on one dropped chart download (transient network errors were seen repeatedly, PROGRESS deviations).
+pull_chart() {
+  local repo=$1 chart=$2 version=$3 dir=$4 i
+  for i in 1 2 3 4 5; do
+    if timeout 180 helm pull "$chart" --repo "$repo" --version "$version" -d "$dir" >&2; then
+      echo "$dir/$chart-$version.tgz"; return 0
+    fi
+    warn "helm pull $chart $version failed (attempt $i/5)"; sleep $((i * 5))
+  done
+  err "could not download chart $chart $version from $repo"; return 1
+}
+
+# wait_app_comparable <kube-context> <app> [timeout-s] → hard refresh, then wait for a comparison without conditions and
+# with no resource marked for pruning; prints the sync status (Synced|OutOfSync). When repo-server cannot render a chart
+# (helm pull timeout), Argo CD marks EVERY resource for pruning (seen in Phase 7); such a state must never be synced.
+wait_app_comparable() {
+  local ctx=$1 app=$2 end=$((SECONDS + ${3:-300})) j cond="?" prune="?" state
+  kubectl --context "$ctx" -n argocd annotate application "$app" argocd.argoproj.io/refresh=hard --overwrite >/dev/null
+  while (( SECONDS < end )); do
+    sleep 10
+    j=$(kubectl --context "$ctx" -n argocd get application "$app" -o json) || continue
+    [[ "$(jq -r '.metadata.annotations["argocd.argoproj.io/refresh"] // ""' <<<"$j")" == "" ]] || continue
+    cond=$(jq -r '[.status.conditions[]? | .type + ": " + .message] | join("; ")' <<<"$j")
+    prune=$(jq '[.status.resources[]? | select(.requiresPruning == true)] | length' <<<"$j")
+    state=$(jq -r '.status.sync.status' <<<"$j")
+    if [[ -z "$cond" && "$prune" == 0 && "$state" =~ ^(Synced|OutOfSync)$ ]]; then echo "$state"; return 0; fi
+  done
+  err "$app not comparable (conditions: ${cond:-none}; resources marked for pruning: $prune)"; return 1
+}
