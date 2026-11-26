@@ -3,9 +3,11 @@
 #   ac_pass/ac_fail/ac_skip <AC-ID> <msg>   output "[PASS|FAIL|SKIP] AC-x.y msg" and count it
 #   ac_should <AC-ID>...                    mark ACs as SHOULD (default is MUST); ac_could for COULD
 #   ac_summary <phase>                      last line + exit code (1 if any MUST failed)
+#   AC_ONLY=AC-5.4,AC-5.5 bash tests/phase-5.sh   run only the listed ACs (others are neither run nor counted)
 #   wait_for <timeout-s> <cmd...>           poll every 2s until cmd succeeds
 #   probe_curl <curl args...>               curl from a container on the kind-boutique network (outside view)
 #   debug_curl <ns> <pod> <container> <curl args...>   curl from an ephemeral container in the pod's netns (identity-preserving)
+#   debug_curl_rc <ns> <pod> <container> <curl args...> same, prints "<curl exit code> <stdout>"
 #   test_pod <ns> <labels> <cmd...>         throwaway PSA-restricted pod running `sh -c cmd` (image: TEST_POD_IMAGE)
 #   prom_query / loki_query / tempo_search  query via a temporary port-forward
 #   hubble_expect <hubble-observe-filter> <VERDICT> [window]   assert a recent flow with that verdict exists
@@ -45,13 +47,15 @@ _ac_count() { # id outcome
   [[ $2 == skip ]] && AC_SKIP_TOTAL=$((AC_SKIP_TOTAL + 1))
   return 0
 }
-ac_pass() { printf '[PASS] %s %s\n' "$1" "${*:2}"; _ac_count "$1" pass; }
-ac_fail() { printf '[FAIL] %s %s\n' "$1" "${*:2}"; _ac_count "$1" fail; }
-ac_skip() { printf '[SKIP] %s %s\n' "$1" "${*:2}"; _ac_count "$1" skip; }
+_ac_selected() { [[ -z "${AC_ONLY:-}" || ",$AC_ONLY," == *",$1,"* ]]; }
+ac_pass() { _ac_selected "$1" || return 0; printf '[PASS] %s %s\n' "$1" "${*:2}"; _ac_count "$1" pass; }
+ac_fail() { _ac_selected "$1" || return 0; printf '[FAIL] %s %s\n' "$1" "${*:2}"; _ac_count "$1" fail; }
+ac_skip() { _ac_selected "$1" || return 0; printf '[SKIP] %s %s\n' "$1" "${*:2}"; _ac_count "$1" skip; }
 
 # ac_check <AC-ID> <description> <cmd...>   PASS if cmd exits 0, else FAIL (cmd output shown indented on failure)
 ac_check() {
   local id=$1 desc=$2; shift 2
+  _ac_selected "$id" || return 0
   local out rc
   out=$("$@" 2>&1); rc=$?
   if (( rc == 0 )); then ac_pass "$id" "$desc"; else
@@ -123,6 +127,17 @@ debug_curl() {
     --container="$name" -q -- curl -s --max-time 10 "$@" >/dev/null 2>&1 || return 1
   wait_for 60 bash -c "kubectl -n '$ns' get pod '$pod' -o jsonpath='{.status.ephemeralContainerStatuses[?(@.name==\"$name\")].state.terminated.exitCode}' | grep -q ." || return 1
   kubectl -n "$ns" logs "$pod" -c "$name"
+}
+
+# debug_curl_rc <ns> <pod> <target-container> <curl args...> → "<exit code> <stdout>" (curl output on one line)
+debug_curl_rc() {
+  local ns=$1 pod=$2 target=$3; shift 3
+  local name rc; name="ac-dbg-$(date +%s)-$RANDOM"
+  kubectl -n "$ns" debug "pod/$pod" --image="$CURL_IMAGE" --target="$target" --profile=restricted \
+    --container="$name" -q -- curl -s "$@" >/dev/null 2>&1 || return 1
+  wait_for 90 bash -c "kubectl -n '$ns' get pod '$pod' -o jsonpath='{.status.ephemeralContainerStatuses[?(@.name==\"$name\")].state.terminated.exitCode}' | grep -q ." || return 1
+  rc=$(kubectl -n "$ns" get pod "$pod" -o jsonpath="{.status.ephemeralContainerStatuses[?(@.name==\"$name\")].state.terminated.exitCode}")
+  echo "$rc $(kubectl -n "$ns" logs "$pod" -c "$name" | tr '\n' ' ')"
 }
 
 # test_pod <ns> <labels k=v,k=v> <shell command>  → command stdout; pod is removed afterwards
