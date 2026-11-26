@@ -5,8 +5,8 @@
 
 ## 현재 상태
 
-- 현재 Phase: **7 — 관측 가능성** (⬜ 대기, Phase 6 ✅ 완료 2026-11-26)
-- 다음 행동: 사용자 확인 후 Phase 7 착수 (`/phase 7`). 이제 클러스터 변경은 commit + push로만 반영된다(Argo CD가 `origin/main`을 본다). Cilium은 수동 sync
+- 현재 Phase: **8 — 네트워크 격리** (⬜ 대기, Phase 7 ✅ 완료 2026-11-26)
+- 다음 행동: 사용자 확인 후 Phase 8 착수 (`/phase 8`). **착수 전 필수**: Cilium ConfigMap 변경(`policyAuditMode`)이 agent에 적용되도록 `rollOutCiliumPods` 문제 해결(ADR-0010 결과 참조). 이제 클러스터 변경은 commit + push로만 반영된다(Argo CD가 `origin/main`을 본다). Cilium은 수동 sync
 - 차단 요소: 없음. 알려진 환경 문제: 외부 인터넷 HTTPS 간헐 멈춤(WSL VM 밖, 편차 참조) — AC-2.4처럼 외부 대상에 의존하는 검증이 간헐 실패할 수 있음
 - SPEC §10 Q1~Q6: 사용자가 기본값 승인(2026-11-25)
 
@@ -21,7 +21,7 @@
 | 4 | L4 로드밸런싱 | ✅ 완료 | 4/4 | 2/2 | `phase-4-done` | 2026-11-26 |
 | 5 | Online Boutique | ✅ 완료 | 8/8 | 1/1 | `phase-5-done` | 2026-11-26 |
 | 6 | L7 Gateway API | ✅ 완료 | 9/9 | 1/1 | `phase-6-done` | 2026-11-26 |
-| 7 | 관측 가능성 | ⬜ | 0/9 | 0/1 | | |
+| 7 | 관측 가능성 | ✅ 완료 | 9/9 | 1/1 | `phase-7-done` | 2026-11-26 |
 | 8 | 네트워크 격리 | ⬜ | 0/6 | 0/4 | | |
 | 9 | 복원력·최종 인수 | ⬜ | 0/7 | 0/1 | | |
 
@@ -34,7 +34,7 @@
 | L2 VIP 장애 전환 시간 | `docker stop`(정상 종료) 기준: 새 노드 lease 인수 +0.2초, 옛 노드 종료 +0.4초, 그 후 첫 성공 +0.5초, 연속 실패 최장 3.5초. 단 죽은 백엔드 때문에 일부 요청(73회 중 21회)이 노드 NotReady 처리(+45.8초) 직후인 +46.9초까지 실패. **크래시(lease 미반납) 전환은 미측정** | 4 |
 | 카나리 실측 비율 (200회) | 9.5% (canary 19 / stable 181, 전부 200). 시험 실행도 19/200 | 6 |
 | East-West L7 LB 전/후 max/min 비율 | 전 3.87·∞ → 후 1.00·1.00 (각 2회, 아래 표). **미채택**(ADR-0010) | 6 |
-| 알림 발화까지 시간 | | 7 |
+| 알림 발화까지 시간 | paymentservice 0 레플리카 주입 후 `BoutiqueDeploymentUnavailable` 151초, `BoutiqueCheckoutErrorRateHigh` 211초(한도 600초). 복구 후 두 알림 해제 391초. 주입 중 별도 주문 부하(약 3초 간격) 사용 | 7 |
 | 노드 장애 시 서비스 복구 시간 | | 9 |
 | 클린 재구축 소요 시간 | | 9 |
 | 클러스터 requests 합계 (CPU / Mem) | | 9 |
@@ -106,6 +106,16 @@ Hubble L7 플로우(목적지 측 REQUEST, gRPC 헬스체크 제외), 상품 페
 | 2026-11-26 | 5 | `tests/phase-5.sh`: Deployment 12개 고정 → 업스트림 12개를 이름으로 확인 + 전체 Available | canary 추가로 13개 |
 | 2026-11-26 | 6 | `tests/phase-6.sh` 작성 중 제 편집 실수로 파일이 잘려, 커밋 전에 원본으로 복구하며 강화: 실패한 요청이 직전 헤더를 재사용해 성공으로 집계될 수 있던 것, AC-6.2의 `jq` 오류가 PASS가 되던 것, AC-6.8이 응답 코드를 안 보던 것 수정 | 판정은 더 엄격해짐 |
 | 2026-11-26 | 6 | 코드·설정 커밋 직전 `/verify`는 매번 Phase 4 회귀(파괴적 제외, MUST 4/4, AC-4.5 SKIP)로 실행. `make lint`가 `charts.jetstack.io` EOF로 1회 실패 → 재실행 통과 | 외부 네트워크 일시 장애 |
+| 2026-11-26 | 7 | **SPEC 변경(모두 승인, 반영)**: ① kubelet·controller-manager·scheduler 스크레이프 `insecureSkipVerify` 예외(ADR-0011) ② AC-7.4 "컨테이너 ≥ 12종" → `(app, container)` 조합 ≥ 12 ③ §5.3 부트스트랩이 Prometheus Operator CRD를 먼저 적용(ADR-0012) ④ AC-7.5 판정 주석 | ① 세 구성요소는 자체 서명 CA. `scripts/check-tls.sh`가 그 밖의 검증 생략을 거부(음성 사례 확인). CLAUDE.md의 금지 규칙 문구는 수정하지 않음 ② 업스트림 컨테이너 이름은 server·main·redis 3종 |
+| 2026-11-26 | 7 | **업스트림 결함(AC-7.5)**: paymentservice·currencyservice(Node.js)의 span이 `parentSpanId` 없이 전송됨(trace id 유지). v0.10.7이 OTel JS SDK 2.11에 `exporter-otlp-grpc` 0.26.0을 섞어 씀. 결과: payment·currency의 부모 연결과 서비스 그래프의 checkout → paymentservice 선이 없음 | package.json·lock과 원본 span JSON으로 확인. overlay로 수정 불가, 업스트림 이미지는 바꾸지 않음. 사용자 승인으로 PASS 판정 |
+| 2026-11-26 | 7 | **재구축 대비(ADR-0012)**: `cni.sh`가 Prometheus Operator CRD를 server-side apply한 뒤 `values.yaml` + `values-monitoring.yaml`로 설치. `check-versions`가 cilium Application의 valueFiles와 일치를 강제. **빈 클러스터에서의 실행은 아직 안 함**(CRD 단계는 server dry-run만, Phase 9에서 확인) | 레이어를 부트스트랩에서 빼면 인수 diff에 비추적 차이가 생겨 가드가 멈춤 |
+| 2026-11-26 | 7 | **Cilium sync 위험 관찰**: `argocd` 앱의 자기 업데이트(redis 재시작) 직후 repo-server의 `helm pull https://helm.cilium.io`가 90초 timeout → `ComparisonError` → `cilium` 앱의 **전 리소스가 prune 대상(`requiresPruning`)** 으로 표시되고 diff는 전체 삭제로 보임. 이때 prune으로 sync하면 CNI가 삭제됨. 동기화하지 않고 회복을 기다린 뒤, 조건 없음·prune 0건을 확인하고 prune 없이 sync | **규칙: cilium sync 전 `status.conditions` 비어 있음과 `requiresPruning` 0건 확인, `--prune` 금지.** Phase 9 런북에 반영 |
+| 2026-11-26 | 7 | monitoring 레이어 적용 후 cilium agent·operator **롤링 0회**(AC-7.10) | 렌더상 빠지는 `prometheus.io/*` 어노테이션은 helm 최초 설치와 Argo CD가 SSA 공동 소유라 값이 남음. 재구축하면 처음부터 없음 |
+| 2026-11-26 | 7 | 알림 규칙 정의: `BoutiqueDeploymentUnavailable`에 `spec.replicas == 0` 조건 추가. `BoutiqueCheckoutErrorRateHigh`는 checkoutservice **SERVER** span만(헬스체크 제외) | 0으로 줄이면 `available < spec`은 절대 참이 안 됨(AC-7.7이 요구하는 발화 불가). client span을 섞으면 오류 비율이 희석됨. 메트릭 이름은 실제 Prometheus에서 확인, `promtool check rules` 통과(음성 사례 확인) |
+| 2026-11-26 | 7 | 구성 선택: OTel에 `servicegraph` connector 추가(Tempo serviceMap용), Tempo jaeger 수신 설정은 차트 기본값 유지(`null`이면 템플릿 오류), Argo CD redis는 exporter 사이드카, 대시보드 3개(Golden Signals·Gateway·Argo CD)는 직접 작성(Kubernetes는 kps, Cilium·Hubble은 Cilium 차트). 트레이싱 미지원(cart·shipping·ad)은 호출 측 client span 패널로 표시. frontend span 이름이 `GET`/`POST`뿐이라 헬스 프로브가 p95·RPS에 섞임 | |
+| 2026-11-26 | 7 | lint 보강: helm 렌더에 `--api-versions monitoring.coreos.com/v1`(없으면 ServiceMonitor가 조용히 빠진 채 통과), TLS 검사, OTel 이미지·cni values 일치 검사. 외부 네트워크 일시 장애(CRD 스키마·차트 인덱스)로 lint가 몇 차례 실패해 재실행 통과 | |
+| 2026-11-26 | 7 | 첫 기동 때 Loki `ingestion rate limit exceeded`(4 MB/s) 발생 — Alloy가 기존 로그를 한꺼번에 읽은 것으로 추정. 이후 15분간 0건. **백필 구간 유실 여부는 확인하지 않음** | |
+| 2026-11-26 | 7 | 코드·설정 커밋 직전 `/verify`는 Phase 4 회귀(파괴적 제외, MUST 4/4, AC-4.5 SKIP). AC-7.7 장애 주입(`DESTRUCTIVE=1`)은 사용자 승인 후 실행 | |
 
 ## 세션 로그
 
@@ -119,3 +129,4 @@ Hubble L7 플로우(목적지 측 REQUEST, gRPC 헬스체크 제외), 상품 페
 - 2026-11-26 Phase 4: `platform/cilium-lb/`(풀 .10~.250, L2 정책), `apps/l4-test/`(agnhost 3 레플리카, `echo-cluster` .30, `echo-local` .31), 앱 `cilium-lb`·`l4-test`, `tests/phase-4.sh` 작성. 배포 후 8개 앱 Synced/Healthy. `DESTRUCTIVE=1 make verify-phase N=4`(사용자 승인) 3회 — 1·2차는 AC-4.5 테스트 결함(위 편차), **3차 MUST 4/4, SHOULD 2/2 PASS**(FAIL 0, SKIP 0). 실측: AC-4.3 30/30 200·백엔드 3개, AC-4.4 10/10 소스 보존, AC-4.6 external(`reserved:world`) → l4-test 플로우 확인. 장애 테스트 후 클러스터 정상(노드 5 Ready, 전 Pod Ready, 앱 8개 Healthy, 노드 IP 불변). 남은 리스크: ① 크래시 시 L2 전환 시간 미측정, ② 노드 장애 후 약 47초간 일부 요청 실패(Phase 9), ③ `echo-local`은 지원되지 않는 조합, ④ 외부 HTTPS 간헐 멈춤(Phase 2·3 편차) 지속, ⑤ `--wait=legacy` 이후 전체 부트스트랩 미실행.
 - 2026-11-26 Phase 5: `scripts/vendor-boutique.sh`, `apps/online-boutique/{upstream,overlays/lab}/`, 앱 `online-boutique`, `tests/phase-5.sh` 작성. 첫 동기화에서 9개 앱 Synced/Healthy(`5d5d0ea`). `make verify-phase N=5` → **MUST 8/8, SHOULD 1/1 PASS**(FAIL 0, SKIP 0), 로그 `tests/results/phase-5-20261126T104011Z.log`. 실측: 16 Pod 모두 app 풀, frontend·productcatalog 존별 1개, 주문 완료 마커 확인, 600초 재시작 0, Locust 1147건 실패 0%, 수동 scale 1 → selfHeal 2초·3 Ready 13초. 클러스터 전체 Running Pod requests 합계 약 2.85 vCPU / 1.9 GiB(참고, NFR-05는 AC-9.7에서 판정), 노드 컨테이너 메모리 합계 약 4.9 GiB / 23.5 GiB. 남은 리스크: ① redis-cart는 emptyDir 단일 레플리카 — 재시작·재스케줄 시 장바구니 소실, ② 서비스 대부분이 단일 레플리카(노드 장애 시 일시 중단, AC-9.2), ③ 트레이싱·카나리는 아직(Phase 7·6), ④ 네트워크 정책 없음(Phase 8), ⑤ 외부 HTTPS 간헐 멈춤 지속.
 - 2026-11-26 Phase 6: `platform/{cert-manager,pki,gateway}/`, `apps/online-boutique/{canary,routes}/`, 앱 `cert-manager`·`pki`·`gateway`·`boutique-routes`, `tests/phase-6.sh` 작성. 첫 동기화에서 13개 앱 Synced/Healthy. East-West L7 LB를 켜고 전/후 측정 → 임시 L7 정책 적용 중 장애 → 사용자 승인으로 되돌림(ADR-0010, cilium 수동 sync 2회: 활성·복원, diff 검토). `make verify-phase N=6` → **MUST 9/9, SHOULD 1/1 PASS, AC-6.11 SKIP**, 로그 `tests/results/phase-6-20261126T120000Z.log`. 실측: Gateway `.10` Accepted·Programmed, 사설 CA 검증(CA 없이 curl exit 60), 301, 호스트 라우팅 200/200/404, canary 19/200, `x-canary: always` 20/20, Hubble `reserved:ingress` → frontend, 라벨 없는 NS Route는 `NotAllowedByListeners`. 남은 리스크: ① **Phase 8 착수 전 확인 필요**: `rollOutCiliumPods`가 없어 `policyAuditMode` 같은 Cilium ConfigMap 변경은 수동 sync 후에도 agent에 적용되지 않음, ② L7 정책 적용·제거 시 트래픽 중단이 L7 LB 없이도 소수 관찰됨 → Phase 8에서 정책 적용 시 loadgenerator 실패 관찰, ③ loadgenerator 누적 실패율 1%대(AC-5.6), ④ Hubble UI는 인증 없이 Gateway에 노출(ARCHITECTURE §13, 실습 한정), ⑤ 타임아웃은 설정만 확인(만료 동작 미검증).
+- 2026-11-26 Phase 7: `observability/{kube-prometheus-stack,loki,alloy,tempo,otel-collector,dashboards,rules}/`, 앱 7개, Cilium·Argo CD·cert-manager `values-monitoring.yaml`(cilium은 diff 검토 후 수동 sync), 트레이싱 env 8개 Deployment, Grafana HTTPRoute, `scripts/check-tls.sh`, `tests/phase-7.sh`. 20개 앱 Synced/Healthy. `DESTRUCTIVE=1 make verify-phase N=7` → **MUST 9/9, SHOULD 1/1 PASS**(FAIL 0, SKIP 0), 로그 `tests/results/phase-7-20261126T131757Z.log`. 실측: 타깃 66/66 up(필수 25종), Loki (app, container) 12종, Grafana 데이터소스 3종 OK·대시보드 37개, 보존 3d/48h/24h·PVC 3 Bound, 알림 발화 151초·211초·해제 391초. 주입 후 원복 확인(paymentservice 1/1, skip-reconcile 제거). 클러스터 Running Pod requests 합계 약 3.8 vCPU / 5.5 GiB(NFR-05 판정은 AC-9.7), infra 노드 메모리 약 4.2 GiB. 남은 리스크: ① Phase 8 전에 `rollOutCiliumPods` 해결 필요, ② Cilium sync 중 `ComparisonError` 상황의 prune 위험, ③ `cni.sh` 새 경로는 빈 클러스터에서 미실행, ④ AC-7.4는 여유 0(정확히 12종, productcatalog는 기동 때만 로그), ⑤ 관측 스택은 infra 노드 1대에 집중(단일 장애점), ⑥ AC-7.9의 UI 클릭 이동은 사람이 확인하지 않음, ⑦ 외부 HTTPS 간헐 멈춤이 Argo CD repo-server의 차트 가져오기에도 영향.
