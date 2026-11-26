@@ -131,32 +131,56 @@ ac_check AC-8.4 "7 negative paths (+2 ingress-isolation checks) blocked with Hub
 show_report
 
 # AC-8.5 ---------------------------------------------------------------------------------------
-GRPC=(-o /dev/null -w '%{http_code}' -m 10 --http2-prior-knowledge -X POST -H 'content-type: application/grpc')
+# Cilium's proxy answers a denied gRPC call the gRPC way: HTTP 200 with grpc-status 7 "Access denied" (SPEC §7.3). An
+# allowed call reaches cartservice, which rejects the empty request with its own status. Hubble shows the L7 verdict.
+GRPC=(-s -o /dev/null -w '%header{grpc-status}|%header{grpc-message}|%header{server}' -m 10 --http2-prior-knowledge
+  -X POST -H 'content-type: application/grpc')
+# hdr <grpc-status|grpc-message|server> <"<exit> status|message|server" from debug_curl_rc>
+hdr() { local v=${2#* }; v=${v%"${v##*[![:space:]]}"}; IFS='|' read -r st msg srv <<<"$v"
+  case $1 in grpc-status) echo "$st" ;; grpc-message) echo "$msg" ;; server) echo "$srv" ;; esac; }
+l7_verdict() {  # <checkout pod> <method> → verdict of the newest L7 request flow for it
+  hubble observe --server "$HUBBLE" --from-pod "$NS/$1" --protocol http --http-path ".*CartService/$2\$" --since 3m -o jsonpb 2>/dev/null |
+    jq -r 'select(.flow.l7.type == "REQUEST") | .flow.verdict' | tail -1
+}
 check_l7() {
-  local ck add get
+  local ck add get va vg
   ck=$(pod_of checkoutservice)
   add=$(debug_curl_rc "$NS" "$ck" server "${GRPC[@]}" http://cartservice:7070/hipstershop.CartService/AddItem) || return 1
   get=$(debug_curl_rc "$NS" "$ck" server "${GRPC[@]}" http://cartservice:7070/hipstershop.CartService/GetCart) || return 1
-  echo "AddItem: exit/code '$add'  GetCart: exit/code '$get'"
-  report "checkoutservice identity: CartService/AddItem -> HTTP ${add#* }, CartService/GetCart -> HTTP ${get#* } (passes the proxy; gRPC status in trailers)"
-  [[ "${add#* }" == "403 " && "${get#* }" == "200 " ]]
+  sleep 3; va=$(l7_verdict "$ck" AddItem); vg=$(l7_verdict "$ck" GetCart)
+  echo "AddItem: grpc-status=$(hdr grpc-status "$add") grpc-message='$(hdr grpc-message "$add")' server=$(hdr server "$add") hubble=$va"
+  echo "GetCart: grpc-status=$(hdr grpc-status "$get") grpc-message='$(hdr grpc-message "$get")' server=$(hdr server "$get") hubble=$vg"
+  report "checkoutservice -> CartService/AddItem: grpc-status $(hdr grpc-status "$add") '$(hdr grpc-message "$add")' from $(hdr server "$add"), Hubble L7 $va"
+  report "checkoutservice -> CartService/GetCart: grpc-status $(hdr grpc-status "$get") '$(hdr grpc-message "$get")' (backend answer), Hubble L7 $vg"
+  [[ "$(hdr grpc-status "$add")" == 7 && "$(hdr grpc-message "$add")" == Access\ denied* && "$(hdr server "$add")" == envoy &&
+     "$va" == DROPPED && "$vg" == FORWARDED && -n "$(hdr grpc-status "$get")" && "$(hdr grpc-message "$get")" != Access\ denied* ]]
 }
-ac_check AC-8.5 "L7: checkoutservice -> CartService/AddItem 403, GetCart 200" check_l7
+ac_check AC-8.5 "L7: checkoutservice -> CartService/AddItem denied by the proxy, GetCart passes" check_l7
 show_report
 
 # AC-8.6 ---------------------------------------------------------------------------------------
+# Tracing clients keep one long-lived connection, so besides the passive look over 30 min a traced workload opens a new
+# OTLP connection (paymentservice: an Export call) - it must succeed and appear FORWARDED in Hubble.
 check_positive() {
-  local otel dns
-  otel=$(hubble observe --server "$HUBBLE" --namespace "$NS" --to-namespace observability --to-port 4317 --verdict FORWARDED \
-    --since 5m -o jsonpb 2>/dev/null | jq -r '.flow.source.workloads[0].name // empty' | sort -u | tr '\n' ' ')
+  local otel py r new dns
+  otel=$(hubble observe --server "$HUBBLE" --from-namespace "$NS" --to-namespace observability --to-port 4317 --verdict FORWARDED \
+    --since 30m -o jsonpb 2>/dev/null | jq -r '.flow.source.workloads[0].name // empty' | sort -u | tr '\n' ' ')
+  py=$(pod_of paymentservice)
+  r=$(debug_curl_rc "$NS" "$py" server -o /dev/null -w '%{http_code}' -m 10 --http2-prior-knowledge -X POST \
+    -H 'content-type: application/grpc' http://otel-collector.observability.svc:4317/opentelemetry.proto.collector.trace.v1.TraceService/Export) || r=err
+  sleep 3
+  new=$(hubble observe --server "$HUBBLE" --from-pod "$NS/$py" --to-namespace observability --to-port 4317 --verdict FORWARDED \
+    --since 2m -o jsonpb 2>/dev/null | jq -s 'length')
   dns=$(hubble observe --server "$HUBBLE" --namespace "$NS" --protocol dns --since 5m -o jsonpb 2>/dev/null |
     jq -r '.flow.l7.dns.query // empty' | sort | uniq -c | sort -rn | head -5 | awk '{print $2}' | tr '\n' ' ')
-  echo "OTLP 4317 FORWARDED from: $otel"; echo "DNS queries seen: $dns"
-  report "OTLP to otel-collector:4317 forwarded from: $otel"
+  echo "OTLP 4317 FORWARDED (30m) from: $otel"; echo "new OTLP connection from paymentservice: curl '$r', Hubble FORWARDED flows: $new"
+  echo "DNS queries seen: $dns"
+  report "OTLP to otel-collector:4317 forwarded (30m) from: $otel"
+  report "new OTLP connection from paymentservice: exit/HTTP '$r', $new FORWARDED flows in Hubble"
   report "DNS queries with names in Hubble: $dns"
-  [[ $(wc -w <<<"$otel") -ge 5 && "$dns" == *svc.cluster.local* ]]
+  [[ $(wc -w <<<"$otel") -ge 5 && "${r%% *}" == 0 && "$(tr -d ' ' <<<"${r#* }")" == 200 && "$new" -gt 0 && "$dns" == *svc.cluster.local* ]]
 }
-ac_check AC-8.6 "tracing services reach otel-collector:4317; DNS queries visible with names" check_positive
+ac_check AC-8.6 "tracing services reach otel-collector:4317 (incl. a new connection); DNS queries visible with names" check_positive
 show_report
 
 # AC-8.7 (SHOULD) ------------------------------------------------------------------------------
