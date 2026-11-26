@@ -43,7 +43,7 @@ DESTRUCTIVE=1 make verify-all                   # 모든 AC (노드 중단·장�
 | `make verify-all` | Phase 1~9 |
 | `make lint` | yamllint, kustomize/helm 렌더, kubeconform, 버전 일관성, 시크릿 스캔 |
 | `make hosts` | `/etc/hosts`에 넣을 줄 출력 |
-| `CONFIRM=yes scripts/rebuild.sh` | 클러스터를 지우고 다시 만들어 전체 검증 (AC-9.1) |
+| `CONFIRM=yes scripts/rebuild.sh` | 클러스터를 지우고 다시 만들어 전체 검증 (AC-9.1, 1~2시간) |
 
 ## 런북
 

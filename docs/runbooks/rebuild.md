@@ -26,10 +26,12 @@ git fetch origin && git diff origin/main --stat   # push 안 된 매니페스트
 검증까지 한 번에(AC-9.1, 무개입, 시간 측정, 1~2시간):
 
 ```bash
-CONFIRM=yes scripts/rebuild.sh          # make down → make up → wait-sync → make up(멱등) → Phase 1~9 검증
+CONFIRM=yes scripts/rebuild.sh   # down → cluster-up·cni → Phase 1·2 → gitops-bootstrap → wait-sync → make up(멱등) → Phase 3~9
 ```
 
-로그는 `tests/results/rebuild-<UTC>.log`, 기록은 `tests/.cache/rebuild-last.json`.
+로그는 `tests/results/rebuild-<UTC>.log`, 기록은 `tests/.cache/rebuild-last.json`. `make up` 시간은 세 단계의 합이다.
+Phase 1·2를 Cilium만 있는 상태에서 돌리는 이유: AC-2.4의 연결성 시험은 agent 시작 후 누적된 패킷 드롭·로그·재시작을
+모두 검사한다.
 
 검증 없이 다시 만들기만:
 

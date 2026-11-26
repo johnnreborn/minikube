@@ -653,6 +653,8 @@ flowchart LR
 | AC-5.8 | MUST | selfHeal: `kubectl scale deploy/frontend --replicas=1` → 3분 내 3으로 복구 | wait_for |
 | AC-5.9 | SHOULD | PSA restricted 위반 목록 산출(Phase 8 입력) | `kubectl label --dry-run=server ns boutique pod-security.kubernetes.io/enforce=restricted --overwrite` 경고 |
 
+> **AC-5.6 주석**: Locust 통계는 loadgenerator Pod가 시작한 뒤의 누적이다. 일부러 노드를 멈추는 시험(AC-4.5, AC-9.2)은 정리 단계에서 loadgenerator Pod를 다시 만들어, 판정이 정상 운영 구간만 반영하게 한다.
+
 **롤백**: 앱 커밋 revert(Argo prune).
 
 ### 6.6 Phase 6 — L7 로드밸런싱 (Gateway API)
@@ -711,7 +713,7 @@ flowchart LR
 
 > **AC-7.5 주석**: Online Boutique v0.10.7의 Node.js 서비스(paymentservice, currencyservice)는 OTel JS SDK 2.x에 옛 exporter(`exporter-otlp-grpc` 0.26.0)를 섞어 써 `parentSpanId`가 빠진 채 전송한다(trace id는 유지). 판정은 같은 트레이스에 세 서비스의 span이 있고 frontend → checkoutservice(결제 호출 span 포함)가 부모 관계로 이어지는지로 한다. 업스트림 이미지 결함이라 overlay로 고치지 않는다.
 
-> **AC-7.10 주석**: 재구축한 클러스터는 monitoring 레이어와 함께 설치된다. 레이어의 "적용"은 Argo CD의 Cilium 인수 sync(`gitops-bootstrap.sh`)이므로, 인수 sync 완료 이후의 컨테이너 재시작이 0이고 agent·operator 롤아웃이 1회 이내인지로 판정한다(설치 중 준비 순서 때문에 생기는 재시작은 제외). 인수 기록이 현재 클러스터의 것이 아니면 모든 재시작 0을 요구한다.
+> **AC-7.10 주석**: 재구축한 클러스터는 monitoring 레이어와 함께 설치된다. 레이어의 "적용"은 Argo CD의 Cilium 인수 sync(`gitops-bootstrap.sh`)이므로, 인수 sync 완료 이후의 컨테이너 재시작이 0이고 agent·operator 롤아웃이 1회 이내인지로 판정한다(설치 중 준비 순서 때문에 생기는 재시작은 제외). 인수 기록이 현재 클러스터의 것이 아니면 모든 재시작 0을 요구한다. 두 경우 모두 `reason: Unknown` 종료(노드가 멈췄다 다시 켜져 컨테이너 상태를 잃은 경우: WSL 재시작, 장애 시험의 `docker stop`)는 세지 않고 개수만 보고한다.
 
 **롤백**: 관측 앱 커밋 revert. 관측 스택 장애는 앱 동작에 영향 없음.
 
@@ -765,6 +767,8 @@ flowchart LR
 | AC-9.6 | MUST | 런북 5종, README, ADR 전부 Accepted/Superseded 상태, PROGRESS 완료 | 파일 검사 |
 | AC-9.7 | SHOULD | 네임스페이스별 requests/실사용 보고, NFR-05 충족 | Prometheus 쿼리 결과 표 |
 | AC-9.8 | MUST | `v1.0.0` 태그 | `git tag` |
+
+> **AC-9.1 주석**: `scripts/rebuild.sh`가 무개입으로 `make down` → `make cluster-up cni` → Phase 1·2 검증 → `make gitops-bootstrap` → `make wait-sync` → `make up`(멱등 확인) → Phase 3~8 → Phase 9 순으로 실행한다. AC-2.4의 클러스터 전체 점검(패킷 드롭 누적, agent 로그, 재시작 수)은 Phase 2를 합격한 Cilium 단독 상태에서만 의미가 있다. `make up` 소요 시간은 세 단계의 합이다.
 
 **롤백**: 해당 없음(검증 Phase).
 
@@ -941,3 +945,4 @@ COULD 항목 중 FR-NET-05, FR-L7-08, FR-ISO-11은 채택 시 AC를 추가한다
 | 1.0-draft+9 | 2026-11-27 | §6.8 AC-8.5·§7.3: L7 거부 판정을 HTTP 403 → gRPC `grpc-status: 7`/`Access denied` + Hubble L7 `DROPPED`로(Cilium 1.20의 gRPC 거부 방식 실측) — 사용자 승인 |
 | 1.0-draft+10 | 2026-11-27 | §5.2·§5.9: 단일 노드 장애 내성(AC-9.2) — currencyservice·cartservice·frontend-canary 2 레플리카, 존 분산의 `nodeTaintsPolicy: Honor`, redis-cart toleration 30s, frontend-canary `progressDeadlineSeconds: 180`, CoreDNS 분산 부트스트랩 패치(ADR-0013) — 사용자 승인 |
 | 1.0-draft+11 | 2026-11-27 | §5.8: Argo CD Git 감지 주기 60s + jitter 30s(AC-9.4). §6.7: AC-7.10 재구축 판정 주석(인수 sync 이후 재시작) — 사용자 승인 |
+| 1.0-draft+12 | 2026-11-27 | §6.5 AC-5.6 주석(노드 장애 시험 후 loadgenerator 통계 초기화), §6.7 AC-7.10(노드 재시작의 `Unknown` 종료 제외), §6.9 AC-9.1 주석(Phase 1·2를 cni 직후 실행) — 사용자 승인 |
