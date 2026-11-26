@@ -1,6 +1,6 @@
 # ADR-0006: 관측 스택은 kube-prometheus-stack + Loki/Alloy + Tempo/OTel Collector + Hubble
 
-- 상태: Proposed
+- 상태: Accepted (사용자 승인 2026-11-27, Phase 9 점검)
 - 날짜: 2026-11-14
 
 ## 맥락
@@ -21,3 +21,6 @@
 - (+) 앱 코드 수정 없이 골든 시그널 확보(트레이스 + Hubble L7 두 경로)
 - (−) 인프라 노드 1대에 집중 → 단일 장애점(실습 범위에서 수용)
 - (−) Hubble L7 메트릭은 L7 정책 적용 후(Phase 8)에야 완전해짐
+
+## 개정 (2026-11-27, 구현 반영)
+- Loki·Tempo 차트는 grafana-community 저장소(ADR-0009), kubelet·controller-manager·scheduler 스크레이프는 TLS 검증 예외(ADR-0011).

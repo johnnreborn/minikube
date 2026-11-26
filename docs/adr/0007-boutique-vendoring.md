@@ -1,6 +1,6 @@
 # ADR-0007: Online Boutique 매니페스트 벤더링 + Kustomize overlay
 
-- 상태: Proposed
+- 상태: Accepted (사용자 승인 2026-11-27, Phase 9 점검)
 - 날짜: 2026-11-14
 
 ## 맥락

@@ -1,6 +1,6 @@
 # ADR-0002: Cilium을 CNI·kube-proxy 대체·L4/L7·관측 단일 스택으로 채택
 
-- 상태: Proposed
+- 상태: Accepted (사용자 승인 2026-11-27, Phase 9 점검)
 - 날짜: 2026-11-14
 
 ## 맥락
@@ -18,3 +18,6 @@ Cilium 1.20을 다음 용도로 사용한다: CNI(eBPF), kube-proxy 완전 대�
 - (+) gRPC 메서드 단위 정책과 L7 메트릭을 사이드카 없이 확보
 - (−) 단일 구성요소 장애·업그레이드 실수의 영향 범위가 큼 → Argo CD 수동 sync, 태그 기반 롤백
 - (−) Envoy L7 리다이렉트에 따른 지연·CPU 증가(실습 규모에서 수용)
+
+## 개정 (2026-11-27, 구현 반영)
+- East-West L7 LB(`loadBalancer.l7`)는 측정 후 채택하지 않았다(ADR-0010).

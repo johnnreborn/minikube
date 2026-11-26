@@ -1,6 +1,6 @@
 # ADR-0005: GitOps는 Argo CD app-of-apps, 최소 명령형 부트스트랩, Cilium 인수
 
-- 상태: Proposed
+- 상태: Accepted (사용자 승인 2026-11-27, Phase 9 점검)
 - 날짜: 2026-11-14
 
 ## 맥락
@@ -20,3 +20,7 @@ CNI 없이는 어떤 Pod도 뜨지 않으므로 Argo CD보다 Cilium이 먼저 �
 ## 결과
 - (+) 부트스트랩 이후 선언적 상태, 드리프트 자동 교정
 - (−) 원격 Git 의존(push 필요), 인수 시 렌더링 차이 관리 필요(ADR-0002 리스크와 연계)
+
+## 개정 (2026-11-27, 구현 반영)
+- 부트스트랩 순서에 Prometheus Operator CRD(ADR-0012)와 CoreDNS 분산 패치(ADR-0013)가 추가됐다.
+- Git 변경 감지 주기는 60초 + jitter 30초(SPEC §5.8, AC-9.4).

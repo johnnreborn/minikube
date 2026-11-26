@@ -1,6 +1,6 @@
 # ADR-0003: L4는 Cilium LB-IPAM + L2 Announcements, 고정 Docker 서브넷
 
-- 상태: Proposed
+- 상태: Accepted (사용자 승인 2026-11-27, Phase 9 점검)
 - 날짜: 2026-11-14
 
 ## 맥락
@@ -21,3 +21,6 @@ kind에는 클라우드 LB가 없다. LoadBalancer Service의 VIP를 할당하�
 - (−) L2 모드는 VIP당 단일 응답 노드(수평 확장 없음), ARP 캐시로 인한 전환 지연
 - (−) L2 Announcements는 `externalTrafficPolicy: Local`과 공식 비호환(Cilium 1.20 문서 Limitations). l4-test `echo-local`은 모든 L2 후보 노드에 Ready 백엔드가 있을 때만 성립하는 실증용이며, 운영 Service는 `Cluster`만 쓴다. 소스 IP 보존이 운영 요구가 되면 BGP 또는 DSR을 별도 검토한다
 - (−) 서브넷 충돌 가능성 → preflight 탐지
+
+## 개정 (2026-11-27, 구현 반영)
+- Phase 4 측정: holder 정상 종료(`docker stop`) 시 Lease 인수는 약 1초 안. 죽은 백엔드는 노드 NotReady 처리(약 46초)까지 남는다(PROGRESS 측정값).
