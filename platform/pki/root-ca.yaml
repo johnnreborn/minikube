@@ -1,0 +1,18 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: boutique-root-ca
+  namespace: cert-manager          # the cluster resource namespace: a CA ClusterIssuer reads its Secret here
+spec:
+  isCA: true
+  commonName: boutique-root-ca
+  secretName: boutique-root-ca
+  duration: 87600h                 # 10 years
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Never          # a renewal must not change the root key, or everything trusting it breaks
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: selfsigned

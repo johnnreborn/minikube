@@ -1,0 +1,8 @@
+# Private PKI (SPEC §5.5): selfsigned issuer -> root CA -> CA ClusterIssuer. Owned by the `pki` Application.
+# The root CA private key only exists in the cluster (cert-manager/Secret boutique-root-ca); nothing secret is in Git.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - selfsigned-issuer.yaml
+  - root-ca.yaml
+  - ca-issuer.yaml

@@ -1,0 +1,30 @@
+# wave 0: Private PKI (needs the cert-manager CRDs and webhook; retried until the webhook answers).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: pki
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/johnnreborn/minikube
+    targetRevision: main
+    path: platform/pki
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    # automated sync does not retry a failed revision on its own (e.g. webhook not ready yet)
+    retry:
+      limit: 5
+      backoff:
+        duration: 20s
+        factor: 2
+        maxDuration: 3m
+    syncOptions:
+      - CreateNamespace=false
+      - PruneLast=true
