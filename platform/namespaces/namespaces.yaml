@@ -37,7 +37,7 @@ kind: Namespace
 metadata:
   name: boutique
   labels:
-    pod-security.kubernetes.io/enforce: baseline     # -> restricted in Phase 8
+    pod-security.kubernetes.io/enforce: restricted   # Phase 8 (AC-8.8); the Phase 5 dry run found no violation
     gateway-access: "true"
 ---
 apiVersion: v1
