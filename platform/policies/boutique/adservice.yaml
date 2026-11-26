@@ -1,15 +1,15 @@
-# adservice: in from frontend, frontend-canary on 9555 (L7)
+# adservice: in from frontend, frontend-canary on 9555 (L7 allowlist)
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
   name: adservice
 spec:
-  description: "adservice: in from frontend, frontend-canary on 9555 (L7)"
+  description: "adservice: in from frontend, frontend-canary on 9555 (L7 allowlist)"
   endpointSelector:
     matchLabels:
       app: adservice
   ingress:
-    - fromEndpoints:
+    - fromEndpoints:          # SPEC §5.6 #4
         - matchExpressions:
             - key: app
               operator: In
@@ -20,4 +20,5 @@ spec:
               protocol: TCP
           rules:
             http:
-              - {}
+              - method: POST
+                path: '/hipstershop\.AdService/GetAds'

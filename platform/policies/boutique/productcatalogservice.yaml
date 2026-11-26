@@ -1,26 +1,51 @@
-# productcatalogservice: in from frontend, frontend-canary, checkoutservice, recommendationservice on 3550 (L7)
+# productcatalogservice: in from frontend, frontend-canary, checkoutservice, recommendationservice on 3550 (L7 allowlist)
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
   name: productcatalogservice
 spec:
-  description: "productcatalogservice: in from frontend, frontend-canary, checkoutservice, recommendationservice on 3550 (L7)"
+  description: "productcatalogservice: in from frontend, frontend-canary, checkoutservice, recommendationservice on 3550 (L7 allowlist)"
   endpointSelector:
     matchLabels:
       app: productcatalogservice
   ingress:
-    - fromEndpoints:
+    - fromEndpoints:          # SPEC §5.6 #8
         - matchExpressions:
             - key: app
               operator: In
-              values: [frontend, frontend-canary, checkoutservice, recommendationservice]
+              values: [frontend, frontend-canary]
       toPorts:
         - ports:
             - port: "3550"
               protocol: TCP
           rules:
             http:
-              - {}
+              - method: POST
+                path: '/hipstershop\.ProductCatalogService/ListProducts'
+              - method: POST
+                path: '/hipstershop\.ProductCatalogService/GetProduct'
+    - fromEndpoints:          # SPEC §5.6 #12
+        - matchLabels:
+            app: checkoutservice
+      toPorts:
+        - ports:
+            - port: "3550"
+              protocol: TCP
+          rules:
+            http:
+              - method: POST
+                path: '/hipstershop\.ProductCatalogService/GetProduct'
+    - fromEndpoints:          # SPEC §5.6 #17
+        - matchLabels:
+            app: recommendationservice
+      toPorts:
+        - ports:
+            - port: "3550"
+              protocol: TCP
+          rules:
+            http:
+              - method: POST
+                path: '/hipstershop\.ProductCatalogService/ListProducts'
   egress:
     - toEndpoints:            # OTLP traces (SPEC §5.6 #20)
         - matchLabels:

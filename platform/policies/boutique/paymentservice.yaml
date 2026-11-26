@@ -1,15 +1,15 @@
-# paymentservice: in from checkoutservice on 50051 (L7)
+# paymentservice: in from checkoutservice on 50051 (L7 allowlist)
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
   name: paymentservice
 spec:
-  description: "paymentservice: in from checkoutservice on 50051 (L7)"
+  description: "paymentservice: in from checkoutservice on 50051 (L7 allowlist)"
   endpointSelector:
     matchLabels:
       app: paymentservice
   ingress:
-    - fromEndpoints:
+    - fromEndpoints:          # SPEC §5.6 #15
         - matchLabels:
             app: checkoutservice
       toPorts:
@@ -18,7 +18,8 @@ spec:
               protocol: TCP
           rules:
             http:
-              - {}
+              - method: POST
+                path: '/hipstershop\.PaymentService/Charge'
   egress:
     - toEndpoints:            # OTLP traces (SPEC §5.6 #20)
         - matchLabels:

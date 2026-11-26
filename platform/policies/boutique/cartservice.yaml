@@ -1,26 +1,44 @@
-# cartservice: in from frontend, frontend-canary, checkoutservice on 7070 (L7)
+# cartservice: in from frontend, frontend-canary, checkoutservice on 7070 (L7 allowlist)
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
   name: cartservice
 spec:
-  description: "cartservice: in from frontend, frontend-canary, checkoutservice on 7070 (L7)"
+  description: "cartservice: in from frontend, frontend-canary, checkoutservice on 7070 (L7 allowlist)"
   endpointSelector:
     matchLabels:
       app: cartservice
   ingress:
-    - fromEndpoints:
+    - fromEndpoints:          # SPEC §5.6 #5
         - matchExpressions:
             - key: app
               operator: In
-              values: [frontend, frontend-canary, checkoutservice]
+              values: [frontend, frontend-canary]
       toPorts:
         - ports:
             - port: "7070"
               protocol: TCP
           rules:
             http:
-              - {}
+              - method: POST
+                path: '/hipstershop\.CartService/GetCart'
+              - method: POST
+                path: '/hipstershop\.CartService/AddItem'
+              - method: POST
+                path: '/hipstershop\.CartService/EmptyCart'
+    - fromEndpoints:          # SPEC §5.6 #11
+        - matchLabels:
+            app: checkoutservice
+      toPorts:
+        - ports:
+            - port: "7070"
+              protocol: TCP
+          rules:
+            http:
+              - method: POST
+                path: '/hipstershop\.CartService/GetCart'
+              - method: POST
+                path: '/hipstershop\.CartService/EmptyCart'
   egress:
     - toEndpoints:
         - matchLabels:

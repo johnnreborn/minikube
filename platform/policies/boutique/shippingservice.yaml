@@ -1,23 +1,37 @@
-# shippingservice: in from frontend, frontend-canary, checkoutservice on 50051 (L7)
+# shippingservice: in from frontend, frontend-canary, checkoutservice on 50051 (L7 allowlist)
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
   name: shippingservice
 spec:
-  description: "shippingservice: in from frontend, frontend-canary, checkoutservice on 50051 (L7)"
+  description: "shippingservice: in from frontend, frontend-canary, checkoutservice on 50051 (L7 allowlist)"
   endpointSelector:
     matchLabels:
       app: shippingservice
   ingress:
-    - fromEndpoints:
+    - fromEndpoints:          # SPEC §5.6 #10
         - matchExpressions:
             - key: app
               operator: In
-              values: [frontend, frontend-canary, checkoutservice]
+              values: [frontend, frontend-canary]
       toPorts:
         - ports:
             - port: "50051"
               protocol: TCP
           rules:
             http:
-              - {}
+              - method: POST
+                path: '/hipstershop\.ShippingService/GetQuote'
+    - fromEndpoints:          # SPEC §5.6 #14
+        - matchLabels:
+            app: checkoutservice
+      toPorts:
+        - ports:
+            - port: "50051"
+              protocol: TCP
+          rules:
+            http:
+              - method: POST
+                path: '/hipstershop\.ShippingService/GetQuote'
+              - method: POST
+                path: '/hipstershop\.ShippingService/ShipOrder'

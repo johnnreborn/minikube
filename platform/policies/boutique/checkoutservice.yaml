@@ -1,15 +1,15 @@
-# checkoutservice: in from frontend, frontend-canary on 5050 (L7)
+# checkoutservice: in from frontend, frontend-canary on 5050 (L7 allowlist)
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
   name: checkoutservice
 spec:
-  description: "checkoutservice: in from frontend, frontend-canary on 5050 (L7)"
+  description: "checkoutservice: in from frontend, frontend-canary on 5050 (L7 allowlist)"
   endpointSelector:
     matchLabels:
       app: checkoutservice
   ingress:
-    - fromEndpoints:
+    - fromEndpoints:          # SPEC §5.6 #6
         - matchExpressions:
             - key: app
               operator: In
@@ -20,7 +20,8 @@ spec:
               protocol: TCP
           rules:
             http:
-              - {}
+              - method: POST
+                path: '/hipstershop\.CheckoutService/PlaceOrder'
   egress:
     - toEndpoints:
         - matchLabels:
