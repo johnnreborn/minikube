@@ -1,0 +1,22 @@
+# Cross-namespace backend: allowed by the ReferenceGrant in kube-system, which is never labelled gateway-access.
+# Hubble UI has no authentication - lab exposure only (ARCHITECTURE §13).
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: hubble
+  namespace: gateway
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: edge
+      sectionName: https
+  hostnames:
+    - hubble.boutique.test
+  rules:
+    - backendRefs:
+        - group: ""
+          kind: Service
+          name: hubble-ui
+          namespace: kube-system
+          port: 80

@@ -1,0 +1,15 @@
+# lets HTTPRoutes in `gateway` use exactly the hubble-ui Service
+apiVersion: gateway.networking.k8s.io/v1
+kind: ReferenceGrant
+metadata:
+  name: gateway-to-hubble-ui
+  namespace: kube-system
+spec:
+  from:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      namespace: gateway
+  to:
+    - group: ""
+      kind: Service
+      name: hubble-ui

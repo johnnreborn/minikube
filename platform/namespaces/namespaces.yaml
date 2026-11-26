@@ -22,6 +22,7 @@ metadata:
   name: gateway
   labels:
     pod-security.kubernetes.io/enforce: restricted
+    gateway-access: "true"       # the Gateway's listeners select by label, including routes in its own namespace
 ---
 apiVersion: v1
 kind: Namespace
