@@ -40,6 +40,7 @@ done < <(find . -name kustomization.yaml -not -path './.git/*' -not -path './tes
 if (( ${#kdirs[@]} == 0 )); then log "no kustomization.yaml yet — nothing to build"; fi
 for d in "${kdirs[@]}"; do
   if kustomize build "$d" >"$TMP/k.yaml" 2>"$TMP/k.err"; then
+    bash scripts/check-tls.sh render "$TMP/k.yaml" || step_fail "tls(kustomize:$d)"
     if "${KUBECONFORM[@]}" <"$TMP/k.yaml" >"$TMP/kc.out" 2>&1; then ok "kustomize+kubeconform: $d"; else
       cat "$TMP/kc.out" >&2; step_fail "kubeconform(kustomize:$d)"; fi
   else
@@ -71,10 +72,13 @@ for row in "${HELM_COMPONENTS[@]}"; do
   for variant in base all; do
     args=(-f "$dir/values.yaml")
     [[ $variant == all ]] && { (( ${#layers[@]} )) || continue; for l in "${layers[@]}"; do args+=(-f "$l"); done; }
+    # like Argo CD against a cluster with the Prometheus Operator CRDs: without --api-versions some charts silently
+    # leave out their ServiceMonitors
     if helm template "$name" "$chart" --repo "$repo" --version "$ver" --namespace "$ns" \
-         --kube-version "$K8S_VER" "${args[@]}" >"$TMP/h.yaml" 2>"$TMP/h.err"; then
+         --kube-version "$K8S_VER" --api-versions monitoring.coreos.com/v1 "${args[@]}" >"$TMP/h.yaml" 2>"$TMP/h.err"; then
       if "${KUBECONFORM[@]}" <"$TMP/h.yaml" >"$TMP/hc.out" 2>&1; then ok "helm template+kubeconform: $name ($variant)"; else
         cat "$TMP/hc.out" >&2; step_fail "kubeconform(helm:$name:$variant)"; fi
+      bash scripts/check-tls.sh render "$TMP/h.yaml" || step_fail "tls(helm:$name:$variant)"
     else
       cat "$TMP/h.err" >&2; step_fail "helm template $name ($variant)"
     fi
@@ -92,6 +96,9 @@ if (( ${#plain[@]} )); then
 else
   log "no gitops manifests yet — nothing to validate"
 fi
+
+log "== TLS verification =="
+if bash scripts/check-tls.sh files; then ok "no TLS verification bypass in committed files"; else step_fail check-tls; fi
 
 # 5. version consistency ----------------------------------------------------------------------
 log "== check-versions =="

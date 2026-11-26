@@ -167,6 +167,13 @@ if [[ -f bootstrap/kind/cluster.yaml ]]; then
     [[ "$img" == "${V[KIND_NODE_IMAGE]:-}" ]] || bad "bootstrap/kind/cluster.yaml: node image '$img' != versions.env KIND_NODE_IMAGE"
   done < <(grep -E '^\s*image:' bootstrap/kind/cluster.yaml | awk '{print $2}')
 fi
+# ---- OTel Collector image set through chart values (not an `image:` line) ----------------------------------------
+OTEL_VALUES=observability/otel-collector/values.yaml
+if [[ -f "$OTEL_VALUES" ]] && have yq; then
+  got="$(yq '.image.repository' "$OTEL_VALUES"):$(yq '.image.tag' "$OTEL_VALUES")"
+  [[ "$got" == "${V[OTEL_COLLECTOR_IMAGE]:-}" ]] || bad "$OTEL_VALUES: image '$got' != versions.env OTEL_COLLECTOR_IMAGE '${V[OTEL_COLLECTOR_IMAGE]:-}'"
+fi
+
 # ---- vendored Gateway API CRDs: version/channel annotations vs versions.env, and the 7 CRDs Cilium requires ----
 GW_DIR=platform/gateway-api-crds
 if compgen -G "$GW_DIR/gateway.networking.k8s.io_*.yaml" >/dev/null; then
