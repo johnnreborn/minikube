@@ -1,0 +1,58 @@
+# SPEC §5.6 platform table: the only sources from outside the namespace. kubelet probes (host) are always allowed
+# (Cilium AllowLocalhost=always).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: grafana-from-gateway
+spec:
+  description: "Grafana UI through the shared Gateway (reserved:ingress)"
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: grafana
+  ingress:
+    - fromEntities:
+        - ingress
+      toPorts:
+        - ports:
+            - port: "3000"
+              protocol: TCP
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: otel-from-boutique
+spec:
+  description: "OTLP traces from the boutique services that support tracing"
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: opentelemetry-collector
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: boutique
+          matchExpressions:
+            - key: app
+              operator: In
+              values: [frontend, frontend-canary, checkoutservice, currencyservice, emailservice, paymentservice,
+                       productcatalogservice, recommendationservice]
+      toPorts:
+        - ports:
+            - port: "4317"
+              protocol: TCP
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: operator-webhook-from-apiserver
+spec:
+  description: "kube-apiserver -> prometheus-operator admission webhook (failurePolicy Ignore would hide a block)"
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: kube-prometheus-stack-prometheus-operator
+  ingress:
+    - fromEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "10250"
+              protocol: TCP

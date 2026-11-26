@@ -1,0 +1,23 @@
+# shippingservice: in from frontend, frontend-canary, checkoutservice on 50051 (L7)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: shippingservice
+spec:
+  description: "shippingservice: in from frontend, frontend-canary, checkoutservice on 50051 (L7)"
+  endpointSelector:
+    matchLabels:
+      app: shippingservice
+  ingress:
+    - fromEndpoints:
+        - matchExpressions:
+            - key: app
+              operator: In
+              values: [frontend, frontend-canary, checkoutservice]
+      toPorts:
+        - ports:
+            - port: "50051"
+              protocol: TCP
+          rules:
+            http:
+              - {}

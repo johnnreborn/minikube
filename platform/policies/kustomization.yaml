@@ -1,0 +1,8 @@
+# All network policies (SPEC §6.8, ADR-0008), owned by the `policies` Application in the platform project.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - boutique
+  - observability
+  - argocd
+  - l4-test

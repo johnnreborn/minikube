@@ -1,0 +1,10 @@
+# ① default deny (ARCHITECTURE §8.2): every boutique pod, both directions. The Cilium policies below only add allows.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress

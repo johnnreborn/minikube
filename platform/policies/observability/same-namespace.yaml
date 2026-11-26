@@ -1,0 +1,11 @@
+# components of observability talk to each other freely
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: same-namespace
+spec:
+  description: "observability: ingress from the same namespace"
+  endpointSelector: {}
+  ingress:
+    - fromEndpoints:
+        - {}

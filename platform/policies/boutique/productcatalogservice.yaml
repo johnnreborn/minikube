@@ -1,0 +1,32 @@
+# productcatalogservice: in from frontend, frontend-canary, checkoutservice, recommendationservice on 3550 (L7)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: productcatalogservice
+spec:
+  description: "productcatalogservice: in from frontend, frontend-canary, checkoutservice, recommendationservice on 3550 (L7)"
+  endpointSelector:
+    matchLabels:
+      app: productcatalogservice
+  ingress:
+    - fromEndpoints:
+        - matchExpressions:
+            - key: app
+              operator: In
+              values: [frontend, frontend-canary, checkoutservice, recommendationservice]
+      toPorts:
+        - ports:
+            - port: "3550"
+              protocol: TCP
+          rules:
+            http:
+              - {}
+  egress:
+    - toEndpoints:            # OTLP traces (SPEC §5.6 #20)
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: opentelemetry-collector
+      toPorts:
+        - ports:
+            - port: "4317"
+              protocol: TCP

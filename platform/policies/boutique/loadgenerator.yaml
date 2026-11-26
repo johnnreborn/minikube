@@ -1,0 +1,18 @@
+# loadgenerator: only to frontend
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: loadgenerator
+spec:
+  description: "loadgenerator: only to frontend"
+  endpointSelector:
+    matchLabels:
+      app: loadgenerator
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            app: frontend
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP

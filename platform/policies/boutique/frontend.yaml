@@ -1,0 +1,97 @@
+# frontend and frontend-canary: Gateway, L4 VIP and loadgenerator in; backends and OTLP out
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: frontend
+spec:
+  description: "frontend and frontend-canary: Gateway, L4 VIP and loadgenerator in; backends and OTLP out"
+  endpointSelector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values: [frontend, frontend-canary]
+  ingress:
+    - fromEntities:           # #1 Gateway (Cilium Envoy) traffic carries reserved:ingress
+        - ingress
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+          rules:
+            http:
+              - {}
+    - fromEndpoints:          # #3 loadgenerator
+        - matchLabels:
+            app: loadgenerator
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+          rules:
+            http:
+              - {}
+    - fromEntities:           # #2 L4 VIP frontend-external (.20): world when the backend is local, remote-node after SNAT
+        - world
+        - remote-node
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            app: adservice
+      toPorts:
+        - ports:
+            - port: "9555"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            app: cartservice
+      toPorts:
+        - ports:
+            - port: "7070"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            app: checkoutservice
+      toPorts:
+        - ports:
+            - port: "5050"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            app: currencyservice
+      toPorts:
+        - ports:
+            - port: "7000"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            app: productcatalogservice
+      toPorts:
+        - ports:
+            - port: "3550"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            app: recommendationservice
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            app: shippingservice
+      toPorts:
+        - ports:
+            - port: "50051"
+              protocol: TCP
+    - toEndpoints:            # OTLP traces (SPEC §5.6 #20)
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: opentelemetry-collector
+      toPorts:
+        - ports:
+            - port: "4317"
+              protocol: TCP

@@ -1,0 +1,23 @@
+# adservice: in from frontend, frontend-canary on 9555 (L7)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: adservice
+spec:
+  description: "adservice: in from frontend, frontend-canary on 9555 (L7)"
+  endpointSelector:
+    matchLabels:
+      app: adservice
+  ingress:
+    - fromEndpoints:
+        - matchExpressions:
+            - key: app
+              operator: In
+              values: [frontend, frontend-canary]
+      toPorts:
+        - ports:
+            - port: "9555"
+              protocol: TCP
+          rules:
+            http:
+              - {}

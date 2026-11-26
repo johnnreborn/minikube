@@ -1,0 +1,32 @@
+# currencyservice: in from frontend, frontend-canary, checkoutservice on 7000 (L7)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: currencyservice
+spec:
+  description: "currencyservice: in from frontend, frontend-canary, checkoutservice on 7000 (L7)"
+  endpointSelector:
+    matchLabels:
+      app: currencyservice
+  ingress:
+    - fromEndpoints:
+        - matchExpressions:
+            - key: app
+              operator: In
+              values: [frontend, frontend-canary, checkoutservice]
+      toPorts:
+        - ports:
+            - port: "7000"
+              protocol: TCP
+          rules:
+            http:
+              - {}
+  egress:
+    - toEndpoints:            # OTLP traces (SPEC §5.6 #20)
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: opentelemetry-collector
+      toPorts:
+        - ports:
+            - port: "4317"
+              protocol: TCP

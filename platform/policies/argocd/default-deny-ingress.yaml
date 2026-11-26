@@ -1,0 +1,9 @@
+# ① ingress default deny for the platform namespace argocd (ARCHITECTURE §8.1); egress stays open
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress

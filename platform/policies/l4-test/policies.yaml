@@ -1,0 +1,29 @@
+# l4-test (ARCHITECTURE §8.1): default deny both ways; only the LoadBalancer VIPs (.30 / .31) reach the echo pods.
+# Source identity: world when the client address is kept (echo-local, or a local backend), remote-node after SNAT.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: echo-from-vip
+spec:
+  description: "echo pods: HTTP 8080 from outside the cluster through the L4 VIPs"
+  endpointSelector:
+    matchLabels:
+      app: echo
+  ingress:
+    - fromEntities:
+        - world
+        - remote-node
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
