@@ -118,9 +118,21 @@ restore_node() {   # EXIT trap: the stopped node is always started again
   true
 }
 on_cleanup restore_node
+node_ready() { k get node "$1" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null; }
+# Right after `docker start` the API still shows the values from before the stop (the node controller needs ~50s to
+# notice a dead node). Only Ready transitions that happened AFTER the restart count as recovery.
+node_recovered() {  # <node> <restart-epoch>: node Ready and every pod on it Ready, all with a transition >= restart
+  local node=$1 since=$2
+  k get node "$node" -o json | jq -e --argjson t "$since" \
+    '.status.conditions[] | select(.type=="Ready") | .status=="True" and ((.lastTransitionTime|fromdateiso8601) >= $t)' >/dev/null || return 1
+  k get pods -A --field-selector "spec.nodeName=$node" -o json | jq -e --argjson t "$since" \
+    '[.items[] | select(.status.phase!="Succeeded") | (.status.conditions // [] | map(select(.type=="Ready"))[0])]
+     | length > 0 and all(.status=="True" and ((.lastTransitionTime|fromdateiso8601) >= $t))' >/dev/null
+}
+probe_ok_streak() { [[ "$(docker logs --tail 20 ac-failover-probe 2>&1 | grep -c '^200$')" == 20 ]]; }
 lease_holder() { k -n kube-system get lease "$LEASE" -o jsonpath='{.spec.holderIdentity}' 2>/dev/null; }
 check_failover() {
-  local old new="" t0 t_holder="" ip_before log res
+  local old new="" t0 t_holder="" t_notready="" t_start ip_before log res
   k wait --for=condition=Ready nodes --all --timeout=60s >/dev/null || { echo "precondition: not all nodes Ready"; return 1; }
   old=$(lease_holder); [[ "$old" == boutique-worker[234] ]] || { echo "unexpected lease holder '$old' (must be an app worker)"; return 1; }
   ip_before=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$old")
@@ -140,9 +152,18 @@ check_failover() {
     if [[ -n "$new" && "$new" != "$old" ]]; then t_holder=$(date +%s.%N); break; fi
     sleep 0.5
   done
-  sleep 45   # keep probing: also shows how long connections to the dead backend keep failing
-  log=$(docker logs --timestamps ac-failover-probe 2>&1); docker rm -f ac-failover-probe >/dev/null
   [[ -n "$t_holder" ]] || { echo "lease did not move within 60s"; return 1; }
+  # keep probing until the node controller has noticed the dead node (its backend is then removed) and 20 probes in a
+  # row succeed: this measures how long connections keep failing, and guarantees the API status is no longer stale
+  end=$((SECONDS + 150))
+  while (( SECONDS < end )); do
+    [[ "$(node_ready "$old")" != True ]] && { t_notready=$(date +%s.%N); break; }
+    sleep 1
+  done
+  [[ -n "$t_notready" ]] || { echo "node was never marked NotReady"; return 1; }
+  sleep 10
+  wait_for 90 probe_ok_streak || { echo "no 20 consecutive successful probes within 90s after NotReady"; return 1; }
+  log=$(docker logs --timestamps ac-failover-probe 2>&1); docker rm -f ac-failover-probe >/dev/null
   res=$(python3 -I - "$t0" "$t_holder" <<'PY' "$log"
 import sys, datetime
 t0, th, log = float(sys.argv[1]), float(sys.argv[2]), sys.argv[3]
@@ -168,14 +189,15 @@ PY
   [[ "$res" != NOOUTAGE && "$res" != NORESUME ]] || return 1
   read -r ff resume hold fa na last <<<"$res"
   report "L2 failover: holder $old -> $new; lease moved after ${hold}s; first failure at +${ff}s, VIP answered again at +${resume}s (from 'docker stop' command)"
-  report "after the VIP resumed: $fa of $na probes still failed (dead backend until the node is marked NotReady), last failure at +${last}s"
+  report "after the VIP resumed: $fa of $na probes still failed; last failure at +${last}s, node marked NotReady at +$(python3 -I -c 'import sys; print(f"{float(sys.argv[1])-float(sys.argv[2]):.1f}")' "$t_notready" "$t0")s; then 20 successes in a row"
   # restore and check recovery
+  t_start=$(date -u +%s)
   docker start "$old" >/dev/null || return 1
   : >"$STOPPED_FILE"
-  k wait --for=condition=Ready "node/$old" --timeout=180s >/dev/null || { echo "$old not Ready after restart"; return 1; }
+  wait_for 300 node_recovered "$old" "$t_start" || { echo "$old and its pods did not become Ready again (fresh status) within 300s"; k get pods -A --field-selector "spec.nodeName=$old"; return 1; }
+  local t_rec=$(( $(date -u +%s) - t_start ))
   wait_for 240 bash -c "[[ \"\$(kubectl --context $CTX -n $NS get deploy echo -o jsonpath='{.status.readyReplicas}')\" == 3 ]]" || { echo "echo not 3/3 after restart"; return 1; }
-  wait_for 240 bash -c "! kubectl --context $CTX -n kube-system get pods --no-headers | grep -E '^cilium' | grep -qvE ' ([0-9]+)/\\1 +Running'" || { echo "cilium pods not Ready after restart"; return 1; }
-  report "recovery: $old Ready again, echo 3/3; node IP before=$ip_before after=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$old")"
+  report "recovery: $old and all its pods Ready ${t_rec}s after 'docker start' (fresh transitions), echo 3/3; node IP before=$ip_before after=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$old")"
   python3 -I -c 'import sys; sys.exit(0 if float(sys.argv[1]) <= 30 else 1)' "$resume"
 }
 if [[ "${DESTRUCTIVE:-0}" == "1" ]]; then
