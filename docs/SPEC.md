@@ -465,6 +465,7 @@ Alertmanager: 실습용 `null` 수신자 기본 + (선택) 로컬 웹훅. 판정
 - Argo CD 차트 values(`platform/argocd/values.yaml`): 모든 컴포넌트 infra 노드 배치, `configs.params."server.insecure": true`, `configs.cm`에 Application health customization, `resource.exclusions`에 Cilium 동적 리소스 추가(기본값 유지), 기본 tracking 방식(annotation) 유지.
 - `values-monitoring.yaml`: 각 컴포넌트 ServiceMonitor (Phase 7).
 - root Application: `gitops/apps` 재귀, `automated: {prune: true, selfHeal: true}`.
+- Git 변경 감지: `configs.cm."timeout.reconciliation": 60s`, `timeout.reconciliation.jitter: 30s`. repo-server의 리비전 캐시 만료도 같은 값을 쓰므로 최악 감지 시간은 캐시 + 주기 + jitter다. 차트 기본값(120s/60s, 약 5분)으로는 AC-9.4의 "revert 후 5분"을 넘길 수 있다(Phase 9에서 307초 관측). 60s/30s는 약 2.5분. Git webhook은 kind에 닿지 않아 쓰지 않는다.
 - 공통 syncOptions: `CreateNamespace=false`(네임스페이스는 `namespaces` 앱이 소유), `PruneLast=true`, CRD 앱은 `ServerSideApply=true`, `Prune=false`.
 - repo 자격증명: `gitops-bootstrap.sh`가 `.env`로 `argocd.argoproj.io/secret-type: repository` Secret 생성(Git 미포함).
 - 버전 일관성: `make lint`의 `check-versions` 단계가 `versions.env` ↔ Application `targetRevision` ↔ 부트스트랩 스크립트 사용 버전을 비교.
@@ -710,6 +711,8 @@ flowchart LR
 
 > **AC-7.5 주석**: Online Boutique v0.10.7의 Node.js 서비스(paymentservice, currencyservice)는 OTel JS SDK 2.x에 옛 exporter(`exporter-otlp-grpc` 0.26.0)를 섞어 써 `parentSpanId`가 빠진 채 전송한다(trace id는 유지). 판정은 같은 트레이스에 세 서비스의 span이 있고 frontend → checkoutservice(결제 호출 span 포함)가 부모 관계로 이어지는지로 한다. 업스트림 이미지 결함이라 overlay로 고치지 않는다.
 
+> **AC-7.10 주석**: 재구축한 클러스터는 monitoring 레이어와 함께 설치된다. 레이어의 "적용"은 Argo CD의 Cilium 인수 sync(`gitops-bootstrap.sh`)이므로, 인수 sync 완료 이후의 컨테이너 재시작이 0이고 agent·operator 롤아웃이 1회 이내인지로 판정한다(설치 중 준비 순서 때문에 생기는 재시작은 제외). 인수 기록이 현재 클러스터의 것이 아니면 모든 재시작 0을 요구한다.
+
 **롤백**: 관측 앱 커밋 revert. 관측 스택 장애는 앱 동작에 영향 없음.
 
 ### 6.8 Phase 8 — 네트워크 격리
@@ -937,3 +940,4 @@ COULD 항목 중 FR-NET-05, FR-L7-08, FR-ISO-11은 채택 시 AC를 추가한다
 | 1.0-draft+8 | 2026-11-26 | §6.8: L7은 감사 모드에서도 집행되므로 2단계 L7(가시성 → 화이트리스트) 절차 명시, l4-test 기본 거부 추가 — 사용자 승인 |
 | 1.0-draft+9 | 2026-11-27 | §6.8 AC-8.5·§7.3: L7 거부 판정을 HTTP 403 → gRPC `grpc-status: 7`/`Access denied` + Hubble L7 `DROPPED`로(Cilium 1.20의 gRPC 거부 방식 실측) — 사용자 승인 |
 | 1.0-draft+10 | 2026-11-27 | §5.2·§5.9: 단일 노드 장애 내성(AC-9.2) — currencyservice·cartservice·frontend-canary 2 레플리카, 존 분산의 `nodeTaintsPolicy: Honor`, redis-cart toleration 30s, frontend-canary `progressDeadlineSeconds: 180`, CoreDNS 분산 부트스트랩 패치(ADR-0013) — 사용자 승인 |
+| 1.0-draft+11 | 2026-11-27 | §5.8: Argo CD Git 감지 주기 60s + jitter 30s(AC-9.4). §6.7: AC-7.10 재구축 판정 주석(인수 sync 이후 재시작) — 사용자 승인 |
