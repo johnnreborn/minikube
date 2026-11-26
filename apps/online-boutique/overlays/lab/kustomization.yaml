@@ -25,3 +25,4 @@ patches:
   - path: patches/productcatalogservice.yaml
   - path: patches/frontend-external.yaml
   - path: patches/loadgenerator.yaml
+  - path: patches/lb-l7.yaml
