@@ -1,0 +1,7 @@
+# frontend canary for the Gateway weight / header routing exercise (SPEC §5.9, §6.6). Included by overlays/lab, which
+# adds the namespace, labels, seccomp profile and no-service-account-token patch like for every other workload.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - deployment.yaml
+  - service.yaml

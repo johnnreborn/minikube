@@ -1,0 +1,78 @@
+# SPEC §5.5: x-canary: always -> canary only; everything else 90/10. x-variant is set per backend (Cilium applies
+# backend-level response filters per weighted cluster), x-served-by marks traffic that went through the Gateway.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: shop
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: edge
+      namespace: gateway
+      sectionName: https
+  hostnames:
+    - shop.boutique.test
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+          headers:
+            - type: Exact
+              name: x-canary
+              value: always
+      timeouts:
+        request: 10s
+      filters:
+        - type: ResponseHeaderModifier
+          responseHeaderModifier:
+            set:
+              - name: x-served-by
+                value: gateway-edge
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: frontend-canary
+          port: 80
+          filters:
+            - type: ResponseHeaderModifier
+              responseHeaderModifier:
+                set:
+                  - name: x-variant
+                    value: canary
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      timeouts:
+        request: 10s
+      filters:
+        - type: ResponseHeaderModifier
+          responseHeaderModifier:
+            set:
+              - name: x-served-by
+                value: gateway-edge
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: frontend
+          port: 80
+          weight: 90
+          filters:
+            - type: ResponseHeaderModifier
+              responseHeaderModifier:
+                set:
+                  - name: x-variant
+                    value: stable
+        - group: ""
+          kind: Service
+          name: frontend-canary
+          port: 80
+          weight: 10
+          filters:
+            - type: ResponseHeaderModifier
+              responseHeaderModifier:
+                set:
+                  - name: x-variant
+                    value: canary

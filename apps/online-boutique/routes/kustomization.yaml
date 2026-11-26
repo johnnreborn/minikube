@@ -1,0 +1,6 @@
+# Application-owned routes (ARCHITECTURE §7.2), deployed by the `boutique-routes` app in the restricted `apps` project.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: boutique
+resources:
+  - shop.yaml
