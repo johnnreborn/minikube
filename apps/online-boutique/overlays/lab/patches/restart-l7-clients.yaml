@@ -1,0 +1,51 @@
+# Phase 8: L7 rules put Envoy between these clients and their callees. Connections opened before the redirect existed
+# must not continue around it, so the clients restart once (a new value restarts them again).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+spec:
+  template:
+    metadata:
+      annotations:
+        boutique.test/l7-proxy-epoch: "1"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-canary
+spec:
+  template:
+    metadata:
+      annotations:
+        boutique.test/l7-proxy-epoch: "1"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: checkoutservice
+spec:
+  template:
+    metadata:
+      annotations:
+        boutique.test/l7-proxy-epoch: "1"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: recommendationservice
+spec:
+  template:
+    metadata:
+      annotations:
+        boutique.test/l7-proxy-epoch: "1"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loadgenerator
+spec:
+  template:
+    metadata:
+      annotations:
+        boutique.test/l7-proxy-epoch: "1"

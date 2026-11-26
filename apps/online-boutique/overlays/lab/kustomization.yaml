@@ -26,3 +26,4 @@ patches:
   - path: patches/frontend-external.yaml
   - path: patches/loadgenerator.yaml
   - path: patches/tracing.yaml
+  - path: patches/restart-l7-clients.yaml
