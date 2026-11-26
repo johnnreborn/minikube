@@ -383,7 +383,7 @@ l4-test (`apps/l4-test`, ns `l4-test`): agnhost `netexec` 3 레플리카(존 분
 
 카나리 식별: 1순위 backendRef 수준 `ResponseHeaderModifier`로 `x-variant: stable|canary`(Cilium 지원 확인), 미지원 시 frontend-canary의 배너 문자열(업스트림 frontend가 지원하는 env로 설정)로 판정.
 
-(COULD) East-West L7 LB: Cilium values `loadBalancer.l7.backend: envoy` + productcatalogservice Service 어노테이션 `service.cilium.io/lb-l7: enabled`. 활성 전/후 레플리카별 요청 비율을 Hubble 메트릭으로 비교.
+(COULD) East-West L7 LB: Cilium values `loadBalancer.l7.backend: envoy` + productcatalogservice Service 어노테이션 `service.cilium.io/lb-l7: enabled`. 활성 전/후 레플리카별 요청 비율을 Hubble L7 플로우로 비교(HTTP 요청 단위 데이터는 L7 가시성이 필요하므로, **측정하는 동안만** productcatalogservice 인그레스에 전부 허용 L7 CiliumNetworkPolicy를 스크립트가 적용하고 종료 시 제거).
 
 ### 5.6 네트워크 정책 매트릭스 (boutique)
 
@@ -670,7 +670,7 @@ flowchart LR
 | AC-6.8 | SHOULD | 응답에 `x-served-by: gateway-edge`, 타임아웃 설정 존재 | 헤더·리소스 검사 |
 | AC-6.9 | MUST | Hubble에서 Gateway → frontend 플로우 출발 identity가 `reserved:ingress` | `hubble observe --to-pod boutique/frontend… -o json` |
 | AC-6.10 | MUST | `boutique` 외 라벨 없는 NS의 HTTPRoute는 Gateway에 붙지 않음(NotAllowedByListeners) | 임시 NS·Route(정리 포함) |
-| AC-6.11 | COULD | L7 LB 활성 시 productcatalogservice 레플리카별 요청 비율 max/min ≤ 1.5 (비활성 시 측정값도 기록) | Hubble 메트릭 |
+| AC-6.11 | COULD | L7 LB 활성 시 productcatalogservice 레플리카별 요청 비율 max/min ≤ 1.5 (비활성 시 측정값도 기록) | Hubble L7 플로우(`hubble observe --protocol http`), 측정 중 임시 L7 가시성 정책 |
 
 **롤백**: Route/카나리 커밋 revert. Gateway 장애 시 L4 경로(.20)는 독립적으로 유지된다.
 
@@ -920,3 +920,4 @@ COULD 항목 중 FR-NET-05, FR-L7-08, FR-ISO-11은 채택 시 AC를 추가한다
 | 1.0-draft+1 | 2026-11-25 | §2.3·§5.1: Loki/Tempo 차트 저장소를 grafana-community로 변경(사용자 승인, ADR-0009) |
 | 1.0-draft+2 | 2026-11-26 | §5.1·§6.2(AC-2.6): Gateway API CRD v1.6.1 → v1.6.3(Cilium 1.20.5 문서 기준, Phase 0 편차 반영). §5.3: 차트 1.20.5에 없는 `externalIPs.enabled` 삭제(KPR=true면 externalIPs 항상 활성) — 사용자 승인 |
 | 1.0-draft+3 | 2026-11-26 | §5.4: L2 Announcements와 `externalTrafficPolicy: Local`의 공식 비호환 주의 문구 추가(`echo-local`은 실증용, 운영 Service는 Cluster) — 사용자 승인. ADR-0003 결과에 같은 내용 반영 |
+| 1.0-draft+4 | 2026-11-26 | §5.5·§6.6(AC-6.11): 측정을 Hubble 메트릭 → Hubble L7 플로우(측정 중 임시 L7 가시성 정책)로 변경. `httpV2` 메트릭에 `destination_pod`가 없고 L7 데이터는 가시성 정책이 필요 — 사용자 승인 |

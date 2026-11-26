@@ -414,7 +414,7 @@ online-boutique-platform/
 | kube-system | 플랫폼 | (기본) | — | Cilium, CoreDNS, Hubble |
 | argocd | 플랫폼 | baseline (warn: restricted) | true | Argo CD |
 | cert-manager | 플랫폼 | baseline | — | cert-manager |
-| gateway | 플랫폼 | restricted | (Gateway 소재지) | Gateway, 와일드카드 인증서, hubble Route |
+| gateway | 플랫폼 | restricted | true (Gateway 소재지, 자체 Route `http-redirect`·`hubble`) | Gateway, 와일드카드 인증서, hubble Route |
 | observability | 플랫폼 | **privileged** (node-exporter, Alloy hostPath) | true | 관측 스택 |
 | boutique | 앱 | baseline → **restricted**(Phase 8) | true | Online Boutique |
 | l4-test | 앱 | restricted | — | agnhost 기반 L4 실험 |
