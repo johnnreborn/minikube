@@ -5,8 +5,8 @@
 
 ## 현재 상태
 
-- 현재 Phase: **8 — 네트워크 격리** (⬜ 대기, Phase 7 ✅ 완료 2026-11-26)
-- 다음 행동: 사용자 확인 후 Phase 8 착수 (`/phase 8`). **착수 전 필수**: Cilium ConfigMap 변경(`policyAuditMode`)이 agent에 적용되도록 `rollOutCiliumPods` 문제 해결(ADR-0010 결과 참조). 이제 클러스터 변경은 commit + push로만 반영된다(Argo CD가 `origin/main`을 본다). Cilium은 수동 sync
+- 현재 Phase: **9 — 복원력·최종 인수** (⬜ 대기, Phase 8 ✅ 완료 2026-11-27)
+- 다음 행동: 사용자 확인 후 Phase 9 착수 (`/phase 9`). 네트워크 정책 집행 중(감사 모드 꺼짐). Cilium 변경은 `scripts/cilium-sync.sh`로(diff 확인 후 `--yes`, prune 안 함). 이제 클러스터 변경은 commit + push로만 반영된다(Argo CD가 `origin/main`을 본다). Cilium은 수동 sync
 - 차단 요소: 없음. 알려진 환경 문제: 외부 인터넷 HTTPS 간헐 멈춤(WSL VM 밖, 편차 참조) — AC-2.4처럼 외부 대상에 의존하는 검증이 간헐 실패할 수 있음
 - SPEC §10 Q1~Q6: 사용자가 기본값 승인(2026-11-25)
 
@@ -22,7 +22,7 @@
 | 5 | Online Boutique | ✅ 완료 | 8/8 | 1/1 | `phase-5-done` | 2026-11-26 |
 | 6 | L7 Gateway API | ✅ 완료 | 9/9 | 1/1 | `phase-6-done` | 2026-11-26 |
 | 7 | 관측 가능성 | ✅ 완료 | 9/9 | 1/1 | `phase-7-done` | 2026-11-26 |
-| 8 | 네트워크 격리 | ⬜ | 0/6 | 0/4 | | |
+| 8 | 네트워크 격리 | ✅ 완료 | 6/6 | 4/4 | `phase-8-done` | 2026-11-27 |
 | 9 | 복원력·최종 인수 | ⬜ | 0/7 | 0/1 | | |
 
 상태: ⬜ 대기 · 🔄 진행 중 · ✅ 완료 · ⚠️ 차단
@@ -116,6 +116,16 @@ Hubble L7 플로우(목적지 측 REQUEST, gRPC 헬스체크 제외), 상품 페
 | 2026-11-26 | 7 | lint 보강: helm 렌더에 `--api-versions monitoring.coreos.com/v1`(없으면 ServiceMonitor가 조용히 빠진 채 통과), TLS 검사, OTel 이미지·cni values 일치 검사. 외부 네트워크 일시 장애(CRD 스키마·차트 인덱스)로 lint가 몇 차례 실패해 재실행 통과 | |
 | 2026-11-26 | 7 | 첫 기동 때 Loki `ingestion rate limit exceeded`(4 MB/s) 발생 — Alloy가 기존 로그를 한꺼번에 읽은 것으로 추정. 이후 15분간 0건. **백필 구간 유실 여부는 확인하지 않음** | |
 | 2026-11-26 | 7 | 코드·설정 커밋 직전 `/verify`는 Phase 4 회귀(파괴적 제외, MUST 4/4, AC-4.5 SKIP). AC-7.7 장애 주입(`DESTRUCTIVE=1`)은 사용자 승인 후 실행 | |
+| 2026-11-26 | 8 | **SPEC 변경(모두 승인, 반영)**: ① 감사 모드는 L3/L4만 감사하고 L7은 집행(Cilium 1.20 문서) → 2단계 L7(가시성 `http: [{}]` → 관측 기반 화이트리스트) ② l4-test 기본 거부 + VIP 진입 허용(ARCHITECTURE §8.1과 일치) ③ AC-8.5·§7.3: gRPC 요청의 L7 거부는 HTTP 403이 아니라 **HTTP 200 + `grpc-status: 7` `Access denied`(server: envoy)** + Hubble L7 `DROPPED` | ③ 실측: checkout → `AddItem` DROPPED/grpc 7, `GetCart` FORWARDED/백엔드 grpc 13, frontend → `AddItem` 백엔드 도달 |
+| 2026-11-26 | 8 | `rollOutCiliumPods`·`operator.rollOutPods` 복원(ADR-0010 결과의 미해결 항목 해소). `scripts/cilium-sync.sh`: refresh 후 비교 오류·prune 대상 0건일 때만, prune 없이 sync하고 롤아웃·`cilium status` 대기 | 감사 모드는 agent 재시작이 있어야 적용(문서). cilium 수동 sync 2회(감사 켜기·끄기), 각 diff는 `policy-audit-mode`와 checksum뿐 |
+| 2026-11-26 | 8 | **argo-cd 차트가 기본으로 만든 NetworkPolicy 5개 비활성**(`global.networkPolicy.create: false`). `argocd-server`용이 모든 출발지 허용, 메트릭 포트는 모든 NS 허용이라 ingress 격리(FR-ISO-06)가 무력화됨. Phase 3부터 존재했음 | 정책 소유자를 `policies` 앱 하나로 |
+| 2026-11-26 | 8 | 설계: L7 규칙은 피호출자(ingress) 쪽만, 호출자 egress는 L4(프록시 1회 통과). frontend ingress는 SPEC대로 HTTP 전체(가시성). kubelet 프로브는 `AllowLocalhost=always`라 정책·프록시 대상 아님(관측으로 확인). kube-apiserver → prometheus-operator 웹훅(10250) 허용 | |
+| 2026-11-26 | 8 | **예상된 차단 1건(문서화)**: frontend·canary → GCP 메타데이터 169.254.169.254:80(업스트림 `cloud.google.com/go/compute/metadata`, 요청 경로 아님). `tests/policy-audit-expected.txt`에 사유 기록, `HubblePolicyDropsDetected`는 이 한 쌍만 제외(다른 워크로드의 외부 egress 차단은 계속 감지) | 제외하지 않으면 알림이 상시 발화 |
+| 2026-11-26 | 8 | **감사 창**: 3분 시험(메타데이터 탐침 발견) → 단계 B 화이트리스트 적용 → 15분 정식 감사. **첫 15분 실행은 무효** — 실행 중 제가 다른 테스트를 돌려 그 EXIT trap이 `ac-test` 라벨의 부하 컨테이너를 지웠고, 스크립트가 `set -e`로 조용히 끝남. 라벨 분리(`ac-audit`)·중단 감지 후 재실행: **AUDIT 0건, L7 27,720건, 403 0건, 체크아웃 VIP 178/178·Gateway 176/176** | AC-8.1 근거 `tests/results/phase-8-audit-20261126T145807Z.log` |
+| 2026-11-26 | 8 | L7 정책 적용 직후 L7 프록시를 거치는 클라이언트 5개(frontend, canary, checkout, recommendation, loadgenerator)를 Git 어노테이션으로 1회 재시작(기존 gRPC 연결이 프록시를 우회하지 않도록, Phase 6 장애 재발 방지). **이 재시작으로 loadgenerator 누적 통계가 초기화됨** → AC-8.3의 AC-5.6은 재시작 후 통계로 판정(실패 0.03%) | 전환 중 loadgenerator 실패: agent 롤아웃 +2, 정책 적용 +2, 집행 전환 0 |
+| 2026-11-26 | 8 | 정식 검증 3회: 1차 MUST 4/6(AC-8.5 SPEC 기준 오류, AC-8.6 테스트의 hubble 필터 조합이 항상 0건), 2차 5/6(AC-8.2: `pipefail`+`grep -q` SIGPIPE 경쟁으로 정상 agent를 감사 모드로 오판 — 프로젝트에서 세 번째로 겪은 같은 버그, `hubble_expect`도 수정), **3차 MUST 6/6, SHOULD 4/4** | 기준·정책 변경 없음(AC-8.5는 승인된 SPEC 변경) |
+| 2026-11-27 | 8 | 절차 실수: lint와 커밋을 `;`로 이어 lint 실패(제가 멈춘 kubeconform을 종료한 단계) 상태에서 테스트 커밋 `acbee9b`가 만들어짐. 직후 같은 트리에서 `make lint` 통과 확인 | 커밋은 테스트 파일뿐 |
+| 2026-11-26 | 8 | `tests/lib.sh`: `AC_ONLY`(지정 AC만 실행), `debug_curl_rc`(ephemeral 컨테이너의 curl 종료 코드). 커밋 직전 `/verify`는 Phase 4 회귀(파괴적 제외). 집행 후 Phase 4 회귀도 MUST 4/4(l4-test 격리 후 VIP·소스 보존 유지) | |
 
 ## 세션 로그
 
@@ -130,3 +140,4 @@ Hubble L7 플로우(목적지 측 REQUEST, gRPC 헬스체크 제외), 상품 페
 - 2026-11-26 Phase 5: `scripts/vendor-boutique.sh`, `apps/online-boutique/{upstream,overlays/lab}/`, 앱 `online-boutique`, `tests/phase-5.sh` 작성. 첫 동기화에서 9개 앱 Synced/Healthy(`5d5d0ea`). `make verify-phase N=5` → **MUST 8/8, SHOULD 1/1 PASS**(FAIL 0, SKIP 0), 로그 `tests/results/phase-5-20261126T104011Z.log`. 실측: 16 Pod 모두 app 풀, frontend·productcatalog 존별 1개, 주문 완료 마커 확인, 600초 재시작 0, Locust 1147건 실패 0%, 수동 scale 1 → selfHeal 2초·3 Ready 13초. 클러스터 전체 Running Pod requests 합계 약 2.85 vCPU / 1.9 GiB(참고, NFR-05는 AC-9.7에서 판정), 노드 컨테이너 메모리 합계 약 4.9 GiB / 23.5 GiB. 남은 리스크: ① redis-cart는 emptyDir 단일 레플리카 — 재시작·재스케줄 시 장바구니 소실, ② 서비스 대부분이 단일 레플리카(노드 장애 시 일시 중단, AC-9.2), ③ 트레이싱·카나리는 아직(Phase 7·6), ④ 네트워크 정책 없음(Phase 8), ⑤ 외부 HTTPS 간헐 멈춤 지속.
 - 2026-11-26 Phase 6: `platform/{cert-manager,pki,gateway}/`, `apps/online-boutique/{canary,routes}/`, 앱 `cert-manager`·`pki`·`gateway`·`boutique-routes`, `tests/phase-6.sh` 작성. 첫 동기화에서 13개 앱 Synced/Healthy. East-West L7 LB를 켜고 전/후 측정 → 임시 L7 정책 적용 중 장애 → 사용자 승인으로 되돌림(ADR-0010, cilium 수동 sync 2회: 활성·복원, diff 검토). `make verify-phase N=6` → **MUST 9/9, SHOULD 1/1 PASS, AC-6.11 SKIP**, 로그 `tests/results/phase-6-20261126T120000Z.log`. 실측: Gateway `.10` Accepted·Programmed, 사설 CA 검증(CA 없이 curl exit 60), 301, 호스트 라우팅 200/200/404, canary 19/200, `x-canary: always` 20/20, Hubble `reserved:ingress` → frontend, 라벨 없는 NS Route는 `NotAllowedByListeners`. 남은 리스크: ① **Phase 8 착수 전 확인 필요**: `rollOutCiliumPods`가 없어 `policyAuditMode` 같은 Cilium ConfigMap 변경은 수동 sync 후에도 agent에 적용되지 않음, ② L7 정책 적용·제거 시 트래픽 중단이 L7 LB 없이도 소수 관찰됨 → Phase 8에서 정책 적용 시 loadgenerator 실패 관찰, ③ loadgenerator 누적 실패율 1%대(AC-5.6), ④ Hubble UI는 인증 없이 Gateway에 노출(ARCHITECTURE §13, 실습 한정), ⑤ 타임아웃은 설정만 확인(만료 동작 미검증).
 - 2026-11-26 Phase 7: `observability/{kube-prometheus-stack,loki,alloy,tempo,otel-collector,dashboards,rules}/`, 앱 7개, Cilium·Argo CD·cert-manager `values-monitoring.yaml`(cilium은 diff 검토 후 수동 sync), 트레이싱 env 8개 Deployment, Grafana HTTPRoute, `scripts/check-tls.sh`, `tests/phase-7.sh`. 20개 앱 Synced/Healthy. `DESTRUCTIVE=1 make verify-phase N=7` → **MUST 9/9, SHOULD 1/1 PASS**(FAIL 0, SKIP 0), 로그 `tests/results/phase-7-20261126T131757Z.log`. 실측: 타깃 66/66 up(필수 25종), Loki (app, container) 12종, Grafana 데이터소스 3종 OK·대시보드 37개, 보존 3d/48h/24h·PVC 3 Bound, 알림 발화 151초·211초·해제 391초. 주입 후 원복 확인(paymentservice 1/1, skip-reconcile 제거). 클러스터 Running Pod requests 합계 약 3.8 vCPU / 5.5 GiB(NFR-05 판정은 AC-9.7), infra 노드 메모리 약 4.2 GiB. 남은 리스크: ① Phase 8 전에 `rollOutCiliumPods` 해결 필요, ② Cilium sync 중 `ComparisonError` 상황의 prune 위험, ③ `cni.sh` 새 경로는 빈 클러스터에서 미실행, ④ AC-7.4는 여유 0(정확히 12종, productcatalog는 기동 때만 로그), ⑤ 관측 스택은 infra 노드 1대에 집중(단일 장애점), ⑥ AC-7.9의 UI 클릭 이동은 사람이 확인하지 않음, ⑦ 외부 HTTPS 간헐 멈춤이 Argo CD repo-server의 차트 가져오기에도 영향.
+- 2026-11-27 Phase 8: `platform/policies/{boutique,observability,argocd,l4-test}/`(NP 4·CNP 25), 앱 `policies`(wave 1), `scripts/{cilium-sync,policy-audit}.sh`, `tests/policy-audit-expected.txt`, `tests/phase-8.sh`, 알림 `HubblePolicyDropsDetected`, Golden Signals Hubble L7 패널 2개, boutique PSA restricted. 순서: 감사 모드 켬 → 정책(L7 가시성) → 클라이언트 재시작 → 단계 B 화이트리스트 → 15분 감사(0건) → 집행. `make verify-phase N=8` 3차 → **MUST 6/6, SHOULD 4/4 PASS**(FAIL 0, SKIP 0), 로그 `tests/results/phase-8-20261126T155756Z.log`. 실측: 음성 경로 7개 + 플랫폼 NS ingress 격리 2개 모두 차단·Hubble POLICY_DENIED, L7 거부 grpc 7, 엔드포인트 17/17 양방향 집행, 회귀 7개 PASS, 알림 발화 34초(대기 시작부터). 클러스터 requests 약 3.8 vCPU / 5.5 GiB. 남은 리스크: ① 업스트림이 gRPC 호출을 바꾸면 화이트리스트 갱신 필요(감사 절차 재실행), ② frontend 메타데이터 탐침 제외로 frontend → world 차단은 알림에 안 잡힘, ③ 정책 변경 시 프록시 우회 연결 문제는 원인 미확정(클라이언트 재시작으로 회피), ④ `cni.sh`의 CRD 단계·`--wait=legacy` 경로는 빈 클러스터에서 아직 미실행(Phase 9), ⑤ 외부 네트워크 일시 장애로 lint의 스키마·차트 다운로드가 자주 멈춤, ⑥ runbook `policy-debug.md` 미작성(Phase 9 AC-9.6).
