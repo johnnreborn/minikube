@@ -13,6 +13,7 @@
 #   hubble_expect <hubble-observe-filter> <VERDICT> [window]   assert a recent flow with that verdict exists
 #   suspend_app / resume_app <app>          freeze Argo CD reconciliation for fault injection (§7.4); restored by trap
 #   rebalance_zones <ns> <app...>           after a node-failure test, move pods back so every zone-spread app is even
+#   reset_loadgenerator                     after a node-failure test, restart loadgenerator so AC-5.6 starts over
 # Every temporary resource carries ac-test=true and is removed by the EXIT trap.
 # shellcheck shell=bash
 
@@ -232,6 +233,15 @@ _surplus_pod() {  # <ns> <app> → name of one pod to move, empty if the zones a
      | {zone: $zones[.spec.nodeName], name: .metadata.name, at: .metadata.creationTimestamp}] as $p
     | [$zones[]] | unique | map(. as $z | [$p[] | select(.zone == $z)]) | sort_by(length)
     | if (.[-1] | length) - (.[0] | length) > 1 then (.[-1] | sort_by(.at) | .[-1].name) else empty end' <<<"$pods"
+}
+
+# AC-5.6 reads Locust's cumulative failure rate, which a deliberate node failure would dominate: restart the pod so the
+# statistics describe normal operation again (SPEC §6.5 AC-5.6 note). Test cleanup only.
+reset_loadgenerator() {
+  kubectl -n boutique get deploy loadgenerator >/dev/null 2>&1 || return 0
+  kubectl -n boutique delete pod -l app=loadgenerator --wait=true >/dev/null &&
+    kubectl -n boutique rollout status deploy/loadgenerator --timeout=300s >/dev/null &&
+    echo "loadgenerator restarted: its statistics start over after the deliberate node failure"
 }
 
 # ---- images ----------------------------------------------------------------------------------

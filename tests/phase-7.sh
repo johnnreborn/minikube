@@ -237,6 +237,15 @@ ac_check AC-7.9 "exemplar -> Tempo and Tempo -> Loki links resolve to real data"
 show_report
 
 # AC-7.10 --------------------------------------------------------------------------------------
+# Restarts after <time>. A container that was running when its node stopped (WSL restart, the docker stop of a failover
+# test) ends with reason "Unknown": that is not a restart of Cilium's own making and is only reported (SPEC §6.7 note).
+# lastState keeps only the latest termination of each container.
+_cilium_terminations() {  # <since> <jq condition on .reason>
+  k -n kube-system get pods -l app.kubernetes.io/part-of=cilium -o json | jq --arg t "$1" \
+    "[.items[].status.containerStatuses[]?.lastState.terminated | select(. != null and .finishedAt > \$t and ($2))] | length"
+}
+cilium_restarts() { _cilium_terminations "$1" '.reason != "Unknown"'; }
+cilium_node_restarts() { _cilium_terminations "$1" '.reason == "Unknown"'; }
 check_cilium() {
   local sync health ds op bds bop late since restarts
   sync=$(k -n argocd get application cilium -o jsonpath='{.status.sync.status}')
@@ -249,10 +258,10 @@ check_cilium() {
   if [[ -s "$CACHE_DIR/phase7-cilium-ds-revision-before" && "$(cat "$CACHE_DIR/phase7-cilium-sync-before")" > "$created" ]]; then
     bds=$(cat "$CACHE_DIR/phase7-cilium-ds-revision-before"); bop=$(cat "$CACHE_DIR/phase7-cilium-operator-revision-before")
     since=$(cat "$CACHE_DIR/phase7-cilium-sync-before")
-    late=$(k -n kube-system get pods -l app.kubernetes.io/part-of=cilium -o json | jq --arg t "$since" \
-      '[.items[].status.containerStatuses[]?.lastState.terminated | select(. != null and .finishedAt > $t)] | length')
+    late=$(cilium_restarts "$since")
     echo "rollouts since the monitoring layer: agent $((ds - bds)), operator $((op - bop)); container restarts since: $late"
-    report "cilium $sync/$health; rollouts for the monitoring layer: agent $((ds - bds)), operator $((op - bop)); container restarts since the sync: $late"
+    report "cilium $sync/$health; rollouts for the monitoring layer: agent $((ds - bds)), operator $((op - bop)); container restarts since the sync: $late ($(cilium_node_restarts "$since") more from node restarts, reason Unknown, not counted)"
+    late=${late:-1}
     (( ds - bds <= 1 && op - bop <= 1 && late == 0 )) || return 1
   else
     # rebuilt cluster (SPEC §6.7 AC-7.10 note): the layer is applied by the Argo CD adoption sync, so no container may
@@ -261,15 +270,15 @@ check_cilium() {
     adopted=$(sed -n "s/^ADOPTION_FINISHED='\(.*\)'$/\1/p" "$CACHE_DIR/cilium-adoption.env" 2>/dev/null || true)
     total=$(k -n kube-system get pods -l app.kubernetes.io/part-of=cilium -o json | jq '[.items[].status.containerStatuses[]?.restartCount] | add')
     if [[ -n "$adopted" && "$adopted" > "$created" ]]; then
-      restarts=$(k -n kube-system get pods -l app.kubernetes.io/part-of=cilium -o json | jq --arg t "$adopted" \
-        '[.items[].status.containerStatuses[]?.lastState.terminated | select(. != null and .finishedAt > $t)] | length')
+      restarts=$(cilium_restarts "$adopted")
       echo "installed with the layer, adopted at $adopted: agent revision $ds, operator revision $op, restarts after adoption $restarts (since install: $total)"
-      report "cilium $sync/$health; installed with the layer: agent revision $ds, operator revision $op; container restarts after the adoption sync ($adopted): $restarts (since install: $total)"
+      report "cilium $sync/$health; installed with the layer: agent revision $ds, operator revision $op; container restarts after the adoption sync ($adopted): $restarts ($(cilium_node_restarts "$adopted") more from node restarts, reason Unknown, not counted; all since install: $total)"
     else
       restarts=$total
       echo "no adoption record from this cluster: agent revision $ds, operator revision $op, restarts $restarts"
       report "cilium $sync/$health; installed with the layer: agent revision $ds, operator revision $op, restarts $restarts"
     fi
+    restarts=${restarts:-1}     # a failed query must not read as zero restarts
     (( ds <= 2 && op <= 2 && restarts == 0 )) || return 1
   fi
   [[ "$sync" == Synced && "$health" == Healthy ]]

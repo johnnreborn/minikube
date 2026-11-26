@@ -345,8 +345,9 @@ PY
   wait_for 300 node_recovered "$node" "$start_epoch" || { echo "$node not recovered within 300s"; k get pods -A --field-selector "spec.nodeName=$node"; return 1; }
   wait_for 300 boutique_converged || { echo "boutique not converged after the restart"; return 1; }
   rebalance_zones "$NS" "${SPREAD_APPS[@]}" || return 1
+  reset_loadgenerator || { echo "loadgenerator did not restart"; return 1; }
   wait_for 600 all_apps_healthy || { k -n argocd get applications; return 1; }
-  report "restore: node and its pods Ready again, zone spread rebalanced, all Applications Synced/Healthy; CoreDNS on $(coredns_nodes) nodes"
+  report "restore: node and its pods Ready again, zone spread rebalanced, loadgenerator statistics reset, all Applications Synced/Healthy; CoreDNS on $(coredns_nodes) nodes"
 
   local rc=0
   (( n >= WINDOW * 2 * 9 / 10 )) || { echo "only $n probe requests in the window (expected about $((WINDOW * 2)))"; rc=1; }
