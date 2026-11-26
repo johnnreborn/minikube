@@ -1,0 +1,53 @@
+# Loki, monolithic on the filesystem (SPEC §5.7, ADR-0009). Chart: versions.env LOKI_CHART_VERSION.
+fullnameOverride: loki                   # Service loki:3100
+deploymentMode: Monolithic
+loki:
+  auth_enabled: false                    # single tenant
+  commonConfig:
+    replication_factor: 1
+  storage:
+    type: filesystem
+  schemaConfig:
+    configs:
+      - from: "2026-01-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: index_
+          period: 24h
+  limits_config:
+    retention_period: 48h                # AC-7.8
+  compactor:
+    retention_enabled: true              # without this, retention_period is not enforced
+    delete_request_store: filesystem
+singleBinary:
+  replicas: 1
+  persistence:
+    size: 10Gi
+    storageClass: standard
+  nodeSelector:
+    node.boutique.io/pool: infra
+  tolerations:
+    - key: node.boutique.io/dedicated
+      operator: Equal
+      value: infra
+      effect: NoSchedule
+  resources:
+    requests: {cpu: 100m, memory: 384Mi}
+    limits: {memory: 1Gi}
+read: {replicas: 0}
+write: {replicas: 0}
+backend: {replicas: 0}
+# not needed on one node; the memcached caches alone would reserve gigabytes
+gateway: {enabled: false}
+chunksCache: {enabled: false}
+resultsCache: {enabled: false}
+lokiCanary: {enabled: false}
+test: {enabled: false}
+sidecar:
+  rules:
+    enabled: false
+monitoring:
+  serviceMonitor:
+    enabled: true

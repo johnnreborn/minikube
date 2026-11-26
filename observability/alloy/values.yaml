@@ -1,0 +1,78 @@
+# Grafana Alloy: tails /var/log/pods on every node and pushes to Loki (SPEC §5.7; Promtail is EOL).
+fullnameOverride: alloy
+crds:
+  create: false
+alloy:
+  enableReporting: false
+  mounts:
+    varlog: true
+  resources:
+    requests: {cpu: 30m, memory: 128Mi}
+    limits: {memory: 256Mi}
+  configMap:
+    content: |
+      // only the pods of this node (HOSTNAME is the node name in this chart)
+      discovery.kubernetes "pods" {
+        role = "pod"
+        selectors {
+          role  = "pod"
+          field = "spec.nodeName=" + sys.env("HOSTNAME")
+        }
+      }
+
+      discovery.relabel "pod_logs" {
+        targets = discovery.kubernetes.pods.targets
+
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label  = "namespace"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label  = "pod"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          target_label  = "container"
+        }
+        // app: the first non-empty of app.kubernetes.io/name and app
+        rule {
+          source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name", "__meta_kubernetes_pod_label_app"]
+          separator     = ";"
+          regex         = "^;*([^;]+).*$"
+          target_label  = "app"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_uid", "__meta_kubernetes_pod_container_name"]
+          separator     = "/"
+          replacement   = "/var/log/pods/*$1/*.log"
+          target_label  = "__path__"
+        }
+      }
+
+      local.file_match "pod_logs" {
+        path_targets = discovery.relabel.pod_logs.output
+      }
+
+      loki.source.file "pod_logs" {
+        targets    = local.file_match.pod_logs.targets
+        forward_to = [loki.process.pod_logs.receiver]
+      }
+
+      // containerd (CRI) log format
+      loki.process "pod_logs" {
+        stage.cri {}
+        forward_to = [loki.write.default.receiver]
+      }
+
+      loki.write "default" {
+        endpoint {
+          url = "http://loki.observability.svc:3100/loki/api/v1/push"
+        }
+      }
+controller:
+  type: daemonset
+  tolerations:                           # logs from every node, including the tainted infra and control-plane nodes
+    - operator: Exists
+serviceMonitor:
+  enabled: true
