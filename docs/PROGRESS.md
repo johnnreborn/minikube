@@ -5,8 +5,8 @@
 
 ## 현재 상태
 
-- 현재 Phase: **5 — Online Boutique** (⬜ 대기, Phase 4 ✅ 완료 2026-11-26)
-- 다음 행동: 사용자 확인 후 Phase 5 착수 (`/phase 5`). 이제 클러스터 변경은 commit + push로만 반영된다(Argo CD가 `origin/main`을 본다). Cilium은 수동 sync
+- 현재 Phase: **6 — L7 Gateway API** (⬜ 대기, Phase 5 ✅ 완료 2026-11-26)
+- 다음 행동: 사용자 확인 후 Phase 6 착수 (`/phase 6`). 이제 클러스터 변경은 commit + push로만 반영된다(Argo CD가 `origin/main`을 본다). Cilium은 수동 sync
 - 차단 요소: 없음. 알려진 환경 문제: 외부 인터넷 HTTPS 간헐 멈춤(WSL VM 밖, 편차 참조) — AC-2.4처럼 외부 대상에 의존하는 검증이 간헐 실패할 수 있음
 - SPEC §10 Q1~Q6: 사용자가 기본값 승인(2026-11-25)
 
@@ -19,7 +19,7 @@
 | 2 | CNI (Cilium) | ✅ 완료 | 8/8 | – | `phase-2-done` | 2026-11-26 |
 | 3 | GitOps 부트스트랩 | ✅ 완료 | 9/9 | – | `phase-3-done` | 2026-11-26 |
 | 4 | L4 로드밸런싱 | ✅ 완료 | 4/4 | 2/2 | `phase-4-done` | 2026-11-26 |
-| 5 | Online Boutique | ⬜ | 0/8 | 0/1 | | |
+| 5 | Online Boutique | ✅ 완료 | 8/8 | 1/1 | `phase-5-done` | 2026-11-26 |
 | 6 | L7 Gateway API | ⬜ | 0/9 | 0/1 | | |
 | 7 | 관측 가능성 | ⬜ | 0/9 | 0/1 | | |
 | 8 | 네트워크 격리 | ⬜ | 0/6 | 0/4 | | |
@@ -79,6 +79,12 @@
 | 2026-11-26 | 4 | `AGNHOST_IMAGE=registry.k8s.io/e2e-test-images/agnhost:2.63.0` 핀(Kubernetes 1.36.4가 쓰는 태그). `check-versions.sh`가 매니페스트 image를 `versions.env`의 `*_IMAGE`와 비교(음성 사례 확인) | CLAUDE.md "이미지 태그 불일치 시 lint 실패" — 이전에는 미검사 |
 | 2026-11-26 | 4 | 풀의 첫 주소 `.10`은 할당 가능(임시 Service가 받음). Cilium 문서의 "첫·마지막 IP 요청 금지" 문구는 start/stop 블록에는 해당하지 않음 | Phase 6 Gateway VIP .10에 영향 없음 |
 | 2026-11-26 | 4 | 커밋 직전 `/verify`는 Phase 1 회귀(5/5+1/1)로 실행. 테스트 커밋은 `/verify` 대상 아님 | 새 매니페스트는 push 전에 검증 불가 |
+| 2026-11-26 | 5 | Online Boutique v0.10.7을 `apps/online-boutique/upstream/`에 벤더링(SHA256 `ae3c2018…f2744`, `upstream/kustomization.yaml`은 스크립트 생성물). `check-versions.sh`가 ① 벤더링 파일 체크섬(직접 수정 차단) ② 태그 일치 ③ overlay 렌더의 모든 image가 Boutique 태그·`versions.env` `*_IMAGE`·digest 중 하나인지 검사(음성 사례 확인) | ADR-0007. 업스트림 loadgenerator init 컨테이너(busybox)는 digest 핀이라 그대로 |
+| 2026-11-26 | 5 | overlay 추가 결정: 전 Deployment `automountServiceAccountToken: false`, `seccompProfile: RuntimeDefault`, loadgenerator `USERS=5`(업스트림 10), `topologySpreadConstraints`에 `matchLabelKeys: [pod-template-hash]`, loadgenerator init 컨테이너 requests/limits 추가 | ARCHITECTURE §13, SPEC §5.9. matchLabelKeys는 롤링 업데이트 후 새 리비전의 존 분산이 깨지는 것을 막음 |
+| 2026-11-26 | 5 | AC-5.1의 "재시작 ≤ 1"은 **네임스페이스 합계의 600초 증가분**으로 판정(Pod별 ≤ 1보다 엄격). AC-5.6은 Locust 누적 통계의 마지막 `Aggregated` 행, 요청 100건 미만이면 판정 불가로 FAIL | 짧은 관찰 사전 실행에서 76건 → FAIL(정상 동작 확인) |
+| 2026-11-26 | 5 | AC-5.9: boutique PSA restricted dry-run 경고 **0건**(대조군 kube-system 8건으로 평가 동작 확인). 목록 `tests/results/phase-5-psa-restricted-20261126T105032Z.log`(gitignored) | Phase 8에서 `boutique` enforce를 restricted로 올릴 때 위반 없음 예상 |
+| 2026-11-26 | 4 | `apps/l4-test`의 `maxSurge: 0` 주석 정정(`maxSkew: 1`이면 surge Pod도 배치 가능). 설정은 불변 | Phase 4에서 작성한 주석이 틀렸음 |
+| 2026-11-26 | 5 | 커밋 직전 `/verify`는 Phase 4 회귀(파괴적 테스트 제외, MUST 4/4, AC-4.5 SKIP)로 실행 | 새 매니페스트는 push 전에 검증 불가 |
 
 ## 세션 로그
 
@@ -90,3 +96,4 @@
 - 2026-11-26 Phase 2: `platform/gateway-api-crds/`(v1.6.3 standard 7종), `platform/cilium/values.yaml`, `bootstrap/scripts/cni.sh`, `tests/phase-2.sh` 작성. `make cni` 1차 성공(helm 시작 → `cilium status` OK·전 노드 Ready까지 160초), 2차는 멱등(2초, Cilium Pod 이름·재시작 수 불변). `k8sServiceHost: boutique-control-plane` 해석 정상. `make verify-phase N=2`: 1차 MUST 7/8(AC-2.4, 위 편차), 2차 **MUST 8/8 PASS**(FAIL 0, SKIP 0). 로그: `tests/results/phase-2-20261125T162757Z.log`. 남은 리스크: ① 외부 대상 HTTPS 간헐 무응답 — 이후 외부 통신을 쓰는 테스트·이미지 pull에서 같은 증상 가능, ② `cni.sh`의 "Argo CD가 Cilium을 관리하면 건너뜀" 분기와 "CRD 후설치 시 operator 재시작" 분기는 실행된 적 없음(전자는 Phase 3에서 확인), ③ hubble-relay가 설치 직후 1회 재시작(peer 서비스 준비 전), 이후 추가 없음, ④ Cilium 롤백은 클러스터 재생성(`make down`은 사용자 확인 필요). 현재 노드 컨테이너 메모리 합계 약 4.6 GiB / 23.5 GiB.
 - 2026-11-26 Phase 3: `platform/argocd/values.yaml`, `platform/namespaces/`, `gitops/{root.yaml,projects/,apps/platform/}`(자식 앱 5개), `bootstrap/scripts/{gitops-bootstrap,wait-sync}.sh`, `tests/phase-3.sh` 작성, argocd CLI 추가. 첫 `make gitops-bootstrap`은 Cilium 인수 가드에서 멈춤(helm v3/v4 렌더 차이, 위 편차) → helm v4.2.1로 핀하고 사용자 승인 후 클러스터 재구축(`make up` 46분, 이 중 약 40분이 helm v4 hook 대기 → `--wait=legacy`로 수정). 재구축 후 인수: diff는 추적 메타데이터뿐, cilium Pod 불변. `make wait-sync` 통과(6개 앱 Synced/Healthy at `690fc7c`). `make verify-phase N=3` → **MUST 9/9 PASS**(FAIL 0, SKIP 0), 로그 `tests/results/phase-3-20261125T201309Z.log`. probe 커밋 4개(`90e141c`..`b4e0d93`)는 모두 revert됨. 남은 리스크: ① 외부 HTTPS 간헐 멈춤(AC-2.4 4회 중 3회 FAIL) — 환경 문제, Phase 9 `verify-all`에도 영향, ② `--wait=legacy` 수정 후의 전체 부트스트랩은 아직 실행 전, ③ 테스트 로그는 PASS인 AC의 세부 출력(선택 시간 등)을 남기지 않음, ④ Argo CD 관리자 초기 비밀번호는 `argocd-initial-admin-secret`(교체 권장, ARCHITECTURE §13), ⑤ Phase 3 검증은 실행마다 `main`에 커밋 4개를 추가함.
 - 2026-11-26 Phase 4: `platform/cilium-lb/`(풀 .10~.250, L2 정책), `apps/l4-test/`(agnhost 3 레플리카, `echo-cluster` .30, `echo-local` .31), 앱 `cilium-lb`·`l4-test`, `tests/phase-4.sh` 작성. 배포 후 8개 앱 Synced/Healthy. `DESTRUCTIVE=1 make verify-phase N=4`(사용자 승인) 3회 — 1·2차는 AC-4.5 테스트 결함(위 편차), **3차 MUST 4/4, SHOULD 2/2 PASS**(FAIL 0, SKIP 0). 실측: AC-4.3 30/30 200·백엔드 3개, AC-4.4 10/10 소스 보존, AC-4.6 external(`reserved:world`) → l4-test 플로우 확인. 장애 테스트 후 클러스터 정상(노드 5 Ready, 전 Pod Ready, 앱 8개 Healthy, 노드 IP 불변). 남은 리스크: ① 크래시 시 L2 전환 시간 미측정, ② 노드 장애 후 약 47초간 일부 요청 실패(Phase 9), ③ `echo-local`은 지원되지 않는 조합, ④ 외부 HTTPS 간헐 멈춤(Phase 2·3 편차) 지속, ⑤ `--wait=legacy` 이후 전체 부트스트랩 미실행.
+- 2026-11-26 Phase 5: `scripts/vendor-boutique.sh`, `apps/online-boutique/{upstream,overlays/lab}/`, 앱 `online-boutique`, `tests/phase-5.sh` 작성. 첫 동기화에서 9개 앱 Synced/Healthy(`5d5d0ea`). `make verify-phase N=5` → **MUST 8/8, SHOULD 1/1 PASS**(FAIL 0, SKIP 0), 로그 `tests/results/phase-5-20261126T104011Z.log`. 실측: 16 Pod 모두 app 풀, frontend·productcatalog 존별 1개, 주문 완료 마커 확인, 600초 재시작 0, Locust 1147건 실패 0%, 수동 scale 1 → selfHeal 2초·3 Ready 13초. 클러스터 전체 Running Pod requests 합계 약 2.85 vCPU / 1.9 GiB(참고, NFR-05는 AC-9.7에서 판정), 노드 컨테이너 메모리 합계 약 4.9 GiB / 23.5 GiB. 남은 리스크: ① redis-cart는 emptyDir 단일 레플리카 — 재시작·재스케줄 시 장바구니 소실, ② 서비스 대부분이 단일 레플리카(노드 장애 시 일시 중단, AC-9.2), ③ 트레이싱·카나리는 아직(Phase 7·6), ④ 네트워크 정책 없음(Phase 8), ⑤ 외부 HTTPS 간헐 멈춤 지속.
