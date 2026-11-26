@@ -22,8 +22,22 @@ fi
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 K8S_VER=${KIND_NODE_VERSION#v}
 CRD_CATALOG='https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
-KUBECONFORM=(kubeconform -strict -summary -ignore-missing-schemas -kubernetes-version "$K8S_VER"
+# each schema is downloaded once per run instead of once per kubeconform call (dropped connections made lint fail at
+# random); the cache lives in $TMP, so no schema is ever stale across runs
+mkdir -p "$TMP/schemas"
+KUBECONFORM=(kubeconform -strict -summary -ignore-missing-schemas -kubernetes-version "$K8S_VER" -cache "$TMP/schemas"
   -schema-location default -schema-location "$CRD_CATALOG")
+# kubeconform_check <output file> <manifest files...>: retried ONLY when a schema could not be downloaded; a retry can
+# pass only if kubeconform itself exits 0, so an invalid resource still fails every time
+kubeconform_check() {
+  local out=$1 i; shift
+  for i in 1 2 3; do
+    "${KUBECONFORM[@]}" "$@" >"$out" 2>&1 && return 0
+    grep -q 'failed parsing schema from' "$out" || return 1
+    (( i < 3 )) && { warn "schema download failed, retrying ($i/3)"; sleep $((i * 5)); }
+  done
+  return 1
+}
 
 # 1. yamllint ---------------------------------------------------------------------------------
 log "== yamllint =="
@@ -41,7 +55,7 @@ if (( ${#kdirs[@]} == 0 )); then log "no kustomization.yaml yet — nothing to b
 for d in "${kdirs[@]}"; do
   if kustomize build "$d" >"$TMP/k.yaml" 2>"$TMP/k.err"; then
     bash scripts/check-tls.sh render "$TMP/k.yaml" || step_fail "tls(kustomize:$d)"
-    if "${KUBECONFORM[@]}" <"$TMP/k.yaml" >"$TMP/kc.out" 2>&1; then ok "kustomize+kubeconform: $d"; else
+    if kubeconform_check "$TMP/kc.out" "$TMP/k.yaml"; then ok "kustomize+kubeconform: $d"; else
       cat "$TMP/kc.out" >&2; step_fail "kubeconform(kustomize:$d)"; fi
   else
     cat "$TMP/k.err" >&2; step_fail "kustomize build $d"
@@ -67,6 +81,9 @@ for row in "${HELM_COMPONENTS[@]}"; do
   [[ -f "$dir/values.yaml" ]] || continue
   helm_rendered=$((helm_rendered + 1))
   repo=${!rvar}; ver=${!vvar}
+  # one download per chart (with retries), then render both variants from the local file
+  mkdir -p "$TMP/charts/$name"
+  if ! tgz=$(pull_chart "$repo" "$chart" "$ver" "$TMP/charts/$name"); then step_fail "helm pull $name"; continue; fi
   # base alone, then base + every layer (values-*.yaml), like bootstrap and Argo CD do
   layers=("$dir"/values-*.yaml)
   for variant in base all; do
@@ -74,9 +91,9 @@ for row in "${HELM_COMPONENTS[@]}"; do
     [[ $variant == all ]] && { (( ${#layers[@]} )) || continue; for l in "${layers[@]}"; do args+=(-f "$l"); done; }
     # like Argo CD against a cluster with the Prometheus Operator CRDs: without --api-versions some charts silently
     # leave out their ServiceMonitors
-    if helm template "$name" "$chart" --repo "$repo" --version "$ver" --namespace "$ns" \
+    if helm template "$name" "$tgz" --namespace "$ns" \
          --kube-version "$K8S_VER" --api-versions monitoring.coreos.com/v1 "${args[@]}" >"$TMP/h.yaml" 2>"$TMP/h.err"; then
-      if "${KUBECONFORM[@]}" <"$TMP/h.yaml" >"$TMP/hc.out" 2>&1; then ok "helm template+kubeconform: $name ($variant)"; else
+      if kubeconform_check "$TMP/hc.out" "$TMP/h.yaml"; then ok "helm template+kubeconform: $name ($variant)"; else
         cat "$TMP/hc.out" >&2; step_fail "kubeconform(helm:$name:$variant)"; fi
       bash scripts/check-tls.sh render "$TMP/h.yaml" || step_fail "tls(helm:$name:$variant)"
     else
@@ -91,7 +108,7 @@ log "== kubeconform (plain manifests) =="
 plain=()
 for f in gitops/**/*.yaml; do plain+=("$f"); done
 if (( ${#plain[@]} )); then
-  if "${KUBECONFORM[@]}" "${plain[@]}" >"$TMP/p.out" 2>&1; then ok "kubeconform: gitops/ (${#plain[@]} files)"; else
+  if kubeconform_check "$TMP/p.out" "${plain[@]}"; then ok "kubeconform: gitops/ (${#plain[@]} files)"; else
     cat "$TMP/p.out" >&2; step_fail "kubeconform(gitops)"; fi
 else
   log "no gitops manifests yet — nothing to validate"
