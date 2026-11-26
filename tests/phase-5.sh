@@ -11,7 +11,9 @@ export PATH="$HOME/.local/bin:$PATH"
 CTX=kind-boutique
 NS=boutique
 VIP=http://172.30.250.20
-DEPLOYMENTS=12
+# the 12 upstream workloads (v0.10.7) must exist; later phases may add more (frontend-canary in Phase 6)
+UPSTREAM_DEPLOYMENTS=(adservice cartservice checkoutservice currencyservice emailservice frontend loadgenerator
+  paymentservice productcatalogservice recommendationservice redis-cart shippingservice)
 OBSERVE_SECONDS=${OBSERVE_SECONDS:-600}
 # order confirmation page marker: src/frontend/templates/order.html of Online Boutique v0.10.7 (versions.env)
 ORDER_MARKER='Your order is complete!'
@@ -30,8 +32,9 @@ restart_snapshot() {
     | ((.status.initContainerStatuses // []) + (.status.containerStatuses // []))[] | "\($p)/\(.name) \(.restartCount)"' | sort
 }
 all_available() {
-  local n; n=$(k -n "$NS" get deploy --no-headers | wc -l)
-  [[ $n -eq $DEPLOYMENTS ]] || { echo "expected $DEPLOYMENTS deployments, found $n"; return 1; }
+  local d missing=()
+  for d in "${UPSTREAM_DEPLOYMENTS[@]}"; do k -n "$NS" get deploy "$d" >/dev/null 2>&1 || missing+=("$d"); done
+  (( ${#missing[@]} == 0 )) || { echo "missing deployments: ${missing[*]}"; return 1; }
   k -n "$NS" wait --for=condition=Available deploy --all --timeout=120s >/dev/null || { k -n "$NS" get deploy; return 1; }
 }
 
@@ -135,7 +138,7 @@ check_stable() {
   delta=$(awk 'NR==FNR {b[$1]=$2; next} {d=$2-b[$1]; if (d>0) print $1, d}' <(echo "$OBS_BEFORE") <(echo "$after"))
   local sum; sum=$(awk '{s+=$2} END {print s+0}' <<<"$delta")
   echo "restarts during ${OBSERVE_SECONDS}s: $sum"; echo "$delta"
-  report "$DEPLOYMENTS deployments Available; restarts during ${OBSERVE_SECONDS}s window: $sum (namespace total); restartCount total since pod start: $(awk '{s+=$2} END {print s+0}' <<<"$after")"
+  report "$(k -n "$NS" get deploy --no-headers | wc -l) deployments (incl. ${#UPSTREAM_DEPLOYMENTS[@]} upstream) Available; restarts during ${OBSERVE_SECONDS}s window: $sum (namespace total); restartCount total since pod start: $(awk '{s+=$2} END {print s+0}' <<<"$after")"
   [[ $sum -le 1 ]]
 }
 ac_check AC-5.1 "all deployments Available; at most 1 restart in the namespace over ${OBSERVE_SECONDS}s" check_stable
