@@ -1,0 +1,145 @@
+# kube-prometheus-stack (SPEC §5.7). Chart version: versions.env KUBE_PROMETHEUS_STACK_CHART_VERSION. Keys checked with
+# `helm show values` (Phase 7). The CRDs come from the separate prometheus-operator-crds app (Phase 3).
+crds:
+  enabled: false
+
+# --- scrape targets of the control plane (kind: kubeadm) -------------------------------------------------------
+kubeProxy:
+  enabled: false                 # Cilium replaces kube-proxy
+kubeEtcd:                        # kind config binds etcd metrics to 0.0.0.0:2381 (plain HTTP)
+  service:
+    port: 2381
+    targetPort: 2381
+# ADR-0011: these three serve self-signed certificates (each with its own CA), so there is no CA to verify against.
+# This exception applies to these scrapes only; scripts/check-tls.sh rejects it anywhere else.
+kubelet:
+  serviceMonitor:
+    insecureSkipVerify: true
+kubeControllerManager:           # bound to 0.0.0.0 by the kind config
+  serviceMonitor:
+    https: true
+    insecureSkipVerify: true
+kubeScheduler:
+  serviceMonitor:
+    https: true
+    insecureSkipVerify: true
+
+# --- Prometheus ------------------------------------------------------------------------------------------------
+prometheus:
+  prometheusSpec:
+    retention: 3d
+    enableFeatures:
+      - exemplar-storage         # exemplar -> Tempo (AC-7.9)
+    # collect every ServiceMonitor / PodMonitor / PrometheusRule / Probe / ScrapeConfig in all namespaces
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+    scrapeConfigSelectorNilUsesHelmValues: false
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: standard
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 10Gi
+    nodeSelector: &infraSelector
+      node.boutique.io/pool: infra
+    tolerations: &infraTolerations
+      - key: node.boutique.io/dedicated
+        operator: Equal
+        value: infra
+        effect: NoSchedule
+    resources:
+      requests: {cpu: 200m, memory: 1Gi}
+      limits: {memory: 2Gi}
+
+# --- Alertmanager: lab default "null" receiver; alerts are judged by the ALERTS series (SPEC §10 Q6) ----------
+alertmanager:
+  alertmanagerSpec:
+    nodeSelector: *infraSelector
+    tolerations: *infraTolerations
+    resources:
+      requests: {cpu: 10m, memory: 64Mi}
+      limits: {memory: 128Mi}
+
+prometheusOperator:
+  nodeSelector: *infraSelector
+  tolerations: *infraTolerations
+  resources:
+    requests: {cpu: 20m, memory: 96Mi}
+    limits: {memory: 256Mi}
+  admissionWebhooks:
+    patch:                       # webhook certificate jobs (helm hooks -> Argo CD sync hooks)
+      nodeSelector: *infraSelector
+      tolerations: *infraTolerations
+
+kube-state-metrics:
+  nodeSelector: *infraSelector
+  tolerations: *infraTolerations
+  resources:
+    requests: {cpu: 20m, memory: 64Mi}
+    limits: {memory: 192Mi}
+
+prometheus-node-exporter:        # DaemonSet; the chart's NoSchedule toleration covers both tainted nodes
+  resources:
+    requests: {cpu: 10m, memory: 32Mi}
+    limits: {memory: 64Mi}
+
+# --- Grafana ---------------------------------------------------------------------------------------------------
+grafana:
+  fullnameOverride: grafana      # Service grafana:80, used by the HTTPRoute (SPEC §5.5)
+  admin:                         # Secret created by gitops-bootstrap.sh from .env (never in Git)
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+  nodeSelector: *infraSelector
+  tolerations: *infraTolerations
+  resources:
+    requests: {cpu: 50m, memory: 256Mi}
+    limits: {memory: 512Mi}
+  grafana.ini:
+    server:
+      root_url: https://grafana.boutique.test
+    analytics:
+      reporting_enabled: false
+      check_for_updates: false
+      check_for_plugin_updates: false
+  sidecar:
+    dashboards:                  # every ConfigMap labelled grafana_dashboard=1 in any namespace
+      enabled: true
+      label: grafana_dashboard
+      labelValue: "1"
+      searchNamespace: ALL
+    datasources:                 # the Prometheus datasource; exemplars link to Tempo
+      uid: prometheus
+      exemplarTraceIdDestinations:
+        datasourceUid: tempo
+        traceIdLabelName: trace_id
+        urlDisplayLabel: View trace
+  additionalDataSources:
+    - name: Loki
+      type: loki
+      uid: loki
+      access: proxy
+      url: http://loki.observability.svc:3100
+    - name: Tempo
+      type: tempo
+      uid: tempo
+      access: proxy
+      url: http://tempo.observability.svc:3200
+      jsonData:
+        tracesToLogsV2:          # span -> logs of the same pod (k8sattributes adds k8s.pod.name)
+          datasourceUid: loki
+          spanStartTimeShift: -5m
+          spanEndTimeShift: 5m
+          tags:
+            - key: k8s.namespace.name
+              value: namespace
+            - key: k8s.pod.name
+              value: pod
+        serviceMap:              # from the OTel servicegraph connector
+          datasourceUid: prometheus
+        nodeGraph:
+          enabled: true

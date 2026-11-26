@@ -1,0 +1,35 @@
+# wave 0: Prometheus, Alertmanager, Grafana, exporters. Server-side apply (large dashboard ConfigMaps).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kube-prometheus-stack
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: platform
+  sources:
+    - repoURL: https://prometheus-community.github.io/helm-charts
+      chart: kube-prometheus-stack
+      targetRevision: 93.3.1
+      helm:
+        releaseName: kube-prometheus-stack
+        valueFiles:
+          - $values/observability/kube-prometheus-stack/values.yaml
+    - repoURL: https://github.com/johnnreborn/minikube
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff: {duration: 20s, factor: 2, maxDuration: 3m}
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true
+      - PruneLast=true
