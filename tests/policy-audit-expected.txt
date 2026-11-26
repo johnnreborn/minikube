@@ -1,0 +1,7 @@
+# Flows that the policies drop on purpose, seen as AUDIT in the audit window (scripts/policy-audit.sh). One regex per
+# line, matched against "<src> -> <dst>:<port>/<proto> (<direction>)". Each needs a reason.
+#
+# Online Boutique frontend probes the GCP metadata server 169.254.169.254:80 in the background
+# (cloud.google.com/go/compute/metadata). Not on the request path (home page only does a DNS lookup); internet egress
+# stays blocked (FR-ISO-08).
+^boutique/frontend(-canary)? -> reserved:world:80/TCP \(EGRESS\)$
