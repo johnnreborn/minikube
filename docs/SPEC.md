@@ -704,6 +704,8 @@ flowchart LR
 | AC-7.9 | SHOULD | exemplar → Tempo, Tempo → Loki 링크 동작 | 데이터소스 설정 + 수동 확인 기록 |
 | AC-7.10 | MUST | Cilium 앱이 monitoring 레이어 적용 후에도 Synced, Pod 재시작은 계획된 롤링 1회 이내 | Application status, restartCount |
 
+> **AC-7.5 주석**: Online Boutique v0.10.7의 Node.js 서비스(paymentservice, currencyservice)는 OTel JS SDK 2.x에 옛 exporter(`exporter-otlp-grpc` 0.26.0)를 섞어 써 `parentSpanId`가 빠진 채 전송한다(trace id는 유지). 판정은 같은 트레이스에 세 서비스의 span이 있고 frontend → checkoutservice(결제 호출 span 포함)가 부모 관계로 이어지는지로 한다. 업스트림 이미지 결함이라 overlay로 고치지 않는다.
+
 **롤백**: 관측 앱 커밋 revert. 관측 스택 장애는 앱 동작에 영향 없음.
 
 ### 6.8 Phase 8 — 네트워크 격리
@@ -927,3 +929,4 @@ COULD 항목 중 FR-NET-05, FR-L7-08, FR-ISO-11은 채택 시 AC를 추가한다
 | 1.0-draft+4 | 2026-11-26 | §5.5·§6.6(AC-6.11): 측정을 Hubble 메트릭 → Hubble L7 플로우(측정 중 임시 L7 가시성 정책)로 변경. `httpV2` 메트릭에 `destination_pod`가 없고 L7 데이터는 가시성 정책이 필요 — 사용자 승인 |
 | 1.0-draft+5 | 2026-11-26 | §5.7: kubelet·controller-manager·scheduler 스크레이프 TLS 예외(ADR-0011). AC-7.4: "컨테이너 ≥ 12종" → 서로 다른 `(app, container)` 조합 ≥ 12(업스트림 컨테이너 이름은 3종뿐) — 사용자 승인 |
 | 1.0-draft+6 | 2026-11-26 | §5.3: 부트스트랩이 Prometheus Operator CRD를 먼저 적용하고 Argo CD와 같은 Cilium values 레이어로 설치(재구축 시 인수 diff를 추적 메타데이터로 유지, ADR-0012) — 사용자 승인 |
+| 1.0-draft+7 | 2026-11-26 | §6.7: AC-7.5 판정 주석(업스트림 Node 서비스의 parentSpanId 누락) — 사용자 승인 |
