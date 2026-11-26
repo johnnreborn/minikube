@@ -6,6 +6,7 @@
 #   - every L7 HTTP request in boutique (the methods each callee really serves; 403 = an L7 denial, enforced even in
 #     audit mode)
 # Report: tests/results/phase-8-audit-<UTC>.log; machine-readable summary: tests/.cache/policy-audit-last.json.
+# Do not run test scripts at the same time: their EXIT trap removes containers labelled ac-test (these use ac-audit).
 # Flows listed in tests/policy-audit-expected.txt (one "src -> dst:port" pattern per line, regex) are expected.
 set -euo pipefail
 # shellcheck source=bootstrap/scripts/lib.sh
@@ -55,9 +56,9 @@ ORDER='order() { B=$1; shift; J=/tmp/j; Y=$(($(date +%Y)+1)); rm -f $J
     -d credit_card_number=4432801561520454 -d credit_card_expiration_month=1 -d credit_card_expiration_year=$Y \
     -d credit_card_cvv=672 $B/cart/checkout
   grep -q "Your order is complete" /tmp/o && echo ok || echo fail; }'
-docker run -d --name "ac-audit-vip-$$" --label ac-test=true --network kind-boutique --entrypoint sh "$CURL_IMAGE" -c \
+docker run -d --name "ac-audit-vip-$$" --label ac-audit=true --network kind-boutique --entrypoint sh "$CURL_IMAGE" -c \
   "$ORDER; while true; do order http://172.30.250.20; sleep 5; done" >/dev/null
-docker run -d --name "ac-audit-gw-$$" --label ac-test=true --network kind-boutique -v "$REPO_ROOT/tests/.cache:/certs:ro" \
+docker run -d --name "ac-audit-gw-$$" --label ac-audit=true --network kind-boutique -v "$REPO_ROOT/tests/.cache:/certs:ro" \
   --entrypoint sh "$CURL_IMAGE" -c "$ORDER; R='--cacert /certs/ca.crt --resolve shop.boutique.test:443:$GW_IP --resolve grafana.boutique.test:443:$GW_IP --resolve argocd.boutique.test:443:$GW_IP'
   while true; do order https://shop.boutique.test \$R
     curl -s -o /dev/null -m 10 \$R https://grafana.boutique.test/api/health
@@ -68,8 +69,11 @@ log "audit window: $MINUTES min (started $(date -u +%FT%TZ))"
 start=$(date -u +%FT%TZ)
 sleep $((MINUTES * 60))
 end=$(date -u +%FT%TZ)
-orders_vip=$(docker logs "ac-audit-vip-$$" 2>&1 | sort | uniq -c | tr -s ' ' | tr '\n' ' ')
-orders_gw=$(docker logs "ac-audit-gw-$$" 2>&1 | sort | uniq -c | tr -s ' ' | tr '\n' ' ')
+# the load containers must have run the whole window (another run's cleanup could have removed them)
+running() { [[ "$(docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null)" == true ]]; }
+running "ac-audit-vip-$$" && running "ac-audit-gw-$$" || die "a load container stopped during the window - audit invalid, run again"
+orders_vip=$( (docker logs "ac-audit-vip-$$" 2>&1 || true) | sort | uniq -c | tr -s ' ' | tr '\n' ' ')
+orders_gw=$( (docker logs "ac-audit-gw-$$" 2>&1 || true) | sort | uniq -c | tr -s ' ' | tr '\n' ' ')
 for p in "${PIDS[@]}"; do kill "$p" 2>/dev/null || true; done
 PIDS=()
 touch "$EXPECTED"
