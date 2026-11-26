@@ -25,7 +25,7 @@ REQUIRED_KEYS=(
   GRAFANA_COMMUNITY_CHART_REPO LOKI_CHART_VERSION LOKI_VERSION TEMPO_CHART_VERSION TEMPO_VERSION
   GRAFANA_CHART_REPO ALLOY_CHART_VERSION ALLOY_VERSION
   OTEL_CHART_REPO OTEL_COLLECTOR_CHART_VERSION OTEL_COLLECTOR_IMAGE
-  BOUTIQUE_VERSION BOUTIQUE_IMAGE_REGISTRY REDIS_IMAGE CURL_IMAGE NETSHOOT_IMAGE
+  BOUTIQUE_VERSION BOUTIQUE_IMAGE_REGISTRY REDIS_IMAGE CURL_IMAGE NETSHOOT_IMAGE AGNHOST_IMAGE
 )
 
 # parse versions.env without sourcing (so a typo cannot execute anything)
@@ -48,7 +48,7 @@ for k in "${!V[@]}"; do
     [[ "$v" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]] || bad "versions.env: $k is not an exact x.y.z version ($v)"
   fi
 done
-for k in KIND_NODE_IMAGE REDIS_IMAGE CURL_IMAGE NETSHOOT_IMAGE OTEL_COLLECTOR_IMAGE; do
+for k in KIND_NODE_IMAGE REDIS_IMAGE CURL_IMAGE NETSHOOT_IMAGE AGNHOST_IMAGE OTEL_COLLECTOR_IMAGE; do
   v=${V[$k]:-}; [[ "$v" == *:* ]] || bad "versions.env: $k needs an explicit tag ($v)"
 done
 [[ "${V[KIND_NODE_IMAGE]:-}" =~ ^kindest/node:v[0-9]+\.[0-9]+\.[0-9]+@sha256:[0-9a-f]{64}$ ]] \
@@ -79,6 +79,17 @@ for f in "${scan_files[@]}"; do
   if grep -n -E 'targetRevision:\s*["'\'']?([\^~]|[0-9.]*[xX*]|latest|>|<)' "$f" >/dev/null 2>&1; then
     bad "$f: targetRevision is a range or 'latest'"
   fi
+done
+
+# ---- manifest images vs versions.env *_IMAGE (CLAUDE.md: a tag that differs from versions.env fails lint) ----------
+declare -A IMAGE_BY_REPO=()
+for k in "${!V[@]}"; do [[ "$k" == *_IMAGE && "$k" != KIND_NODE_IMAGE ]] && IMAGE_BY_REPO[${V[$k]%:*}]=${V[$k]}; done
+for f in "${scan_files[@]}"; do
+  while IFS= read -r img; do
+    img=${img%\"}; img=${img#\"}
+    want=${IMAGE_BY_REPO[${img%:*}]:-}
+    [[ -z "$want" || "$img" == "$want" ]] || bad "$f: image '$img' != versions.env '$want'"
+  done < <(sed -n -E 's/^[[:space:]]*(-[[:space:]]+)?image:[[:space:]]*([^[:space:]#]+).*/\2/p' "$f")
 done
 
 # ---- Application targetRevision / repoURL vs versions.env ------------------------------------

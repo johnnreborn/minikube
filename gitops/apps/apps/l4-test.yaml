@@ -1,0 +1,24 @@
+# wave 2: application workload in the restricted `apps` project (no cluster-scoped or isolation objects).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: l4-test
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: apps
+  source:
+    repoURL: https://github.com/johnnreborn/minikube
+    targetRevision: main
+    path: apps/l4-test
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: l4-test
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - PruneLast=true

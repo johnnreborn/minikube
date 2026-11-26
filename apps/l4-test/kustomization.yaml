@@ -1,0 +1,7 @@
+# L4 load-balancing lab (SPEC §5.4): echo backends behind two LoadBalancer Services. Owned by the `l4-test` Application.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: l4-test
+resources:
+  - deployment.yaml
+  - services.yaml

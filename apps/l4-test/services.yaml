@@ -1,0 +1,34 @@
+# VIPs are fixed with the LB-IPAM annotation (ARCHITECTURE §5.1).
+apiVersion: v1
+kind: Service
+metadata:
+  name: echo-cluster
+  annotations:
+    lbipam.cilium.io/ips: "172.30.250.30"
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Cluster
+  selector:
+    app: echo
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+# externalTrafficPolicy: Local keeps the client address. NOT supported with L2 announcements (SPEC §5.4 note): it works
+# here only because every L2 candidate node has a ready backend.
+apiVersion: v1
+kind: Service
+metadata:
+  name: echo-local
+  annotations:
+    lbipam.cilium.io/ips: "172.30.250.31"
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Local
+  selector:
+    app: echo
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
