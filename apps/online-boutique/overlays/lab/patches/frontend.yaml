@@ -12,6 +12,8 @@ spec:
         - maxSkew: 1
           topologyKey: topology.kubernetes.io/zone
           whenUnsatisfiable: DoNotSchedule
+          # a dead node's zone must not count, or the replacement pod stays Pending (ADR-0013)
+          nodeTaintsPolicy: Honor
           labelSelector:
             matchLabels:
               app: frontend

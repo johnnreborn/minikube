@@ -32,5 +32,7 @@ AC-9.2는 zone-b 워커를 끈 상태에서 `https://shop.boutique.test/`가 90�
 - (+) 앱 워커 1대가 죽어도 홈 화면 요청 경로의 모든 서비스에 살아 있는 백엔드가 있거나(redis 제외) 곧 다시 뜬다
 - (−) requests가 약 +0.4 vCPU / +0.2 GiB (NFR-05 한도 안)
 - (−) redis-cart가 죽은 노드에 있으면 장바구니가 사라지고, 새 Pod가 뜰 때까지(약 80초 예상) 홈 화면이 실패한다
+- (−) **보호 범위는 홈 화면(`/`)이다**(v0.10.7 `homeHandler`: currency, productcatalog, cart, ad — ad는 실패해도 표시). 상품·장바구니·결제
+  경로의 단일 레플리카(checkout, payment, email, shipping, recommendation, ad)는 죽은 노드에 있으면 약 6분 동안 해당 기능이 실패한다
 - (−) 노드가 복구돼도 Pod는 자동으로 재균형되지 않는다(테스트가 복구 후 재분산)
 - (−) 부트스트랩 예외가 하나 늘었다(ARCHITECTURE §10.1)

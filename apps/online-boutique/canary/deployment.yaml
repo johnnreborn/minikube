@@ -1,12 +1,14 @@
-# Same image and settings as the upstream frontend (v0.10.7), one replica. `app: frontend-canary` keeps it out of the
-# frontend Service, its PDB and zone spread. FRONTEND_MESSAGE shows a visible banner; the Gateway also tags responses
-# with x-variant per backend.
+# Same image and settings as the upstream frontend (v0.10.7), two replicas in different zones (10% of the shop traffic
+# goes here, ADR-0013). `app: frontend-canary` keeps it out of the frontend Service, its PDB and zone spread.
+# FRONTEND_MESSAGE shows a visible banner; the Gateway also tags responses with x-variant per backend.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: frontend-canary
 spec:
-  replicas: 1
+  replicas: 2
+  # a bad release is reported Degraded after 3 minutes instead of the default 10 (AC-9.4)
+  progressDeadlineSeconds: 180
   selector:
     matchLabels:
       app: frontend-canary
@@ -15,6 +17,16 @@ spec:
       labels:
         app: frontend-canary
     spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          nodeTaintsPolicy: Honor
+          labelSelector:
+            matchLabels:
+              app: frontend-canary
+          matchLabelKeys:
+            - pod-template-hash
       serviceAccountName: frontend
       securityContext:
         fsGroup: 1000
