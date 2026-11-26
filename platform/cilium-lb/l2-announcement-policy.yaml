@@ -1,0 +1,14 @@
+# One app-pool worker per Service answers ARP for the VIP (Kubernetes Lease); lease timing is in the Cilium values.
+# externalTrafficPolicy: Local is not supported with L2 announcements (SPEC §5.4 note).
+apiVersion: cilium.io/v2alpha1
+kind: CiliumL2AnnouncementPolicy
+metadata:
+  name: app-workers
+spec:
+  nodeSelector:
+    matchLabels:
+      node.boutique.io/pool: app
+  interfaces:
+    - "^eth0$"
+  loadBalancerIPs: true
+  externalIPs: true

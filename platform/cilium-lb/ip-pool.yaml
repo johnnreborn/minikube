@@ -1,0 +1,10 @@
+# VIP range on the kind-boutique subnet (ARCHITECTURE §5.1): .10 Gateway, .20 frontend-external, .30/.31 l4-test.
+# The upper range does not collide with the node addresses Docker assigns.
+apiVersion: cilium.io/v2
+kind: CiliumLoadBalancerIPPool
+metadata:
+  name: default-pool
+spec:
+  blocks:
+    - start: "172.30.250.10"
+      stop: "172.30.250.250"
