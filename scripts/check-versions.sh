@@ -92,6 +92,29 @@ for f in "${scan_files[@]}"; do
   done < <(sed -n -E 's/^[[:space:]]*(-[[:space:]]+)?image:[[:space:]]*([^[:space:]#]+).*/\2/p' "$f")
 done
 
+# ---- vendored Online Boutique (ADR-0007): unmodified, and every rendered image is pinned to versions.env ------------
+UPSTREAM=apps/online-boutique/upstream
+if [[ -f "$UPSTREAM/kubernetes-manifests.yaml" ]]; then
+  (cd "$UPSTREAM" && sha256sum --quiet -c SHA256SUMS) >/dev/null 2>&1 \
+    || bad "$UPSTREAM: manifest does not match SHA256SUMS (vendored files must not be edited; run scripts/vendor-boutique.sh)"
+  grep -qF "(${V[BOUTIQUE_VERSION]:-})" "$UPSTREAM/kustomization.yaml" \
+    || bad "$UPSTREAM: vendored for a different tag than versions.env BOUTIQUE_VERSION ${V[BOUTIQUE_VERSION]:-}"
+  declare -A PINNED=()
+  for k in "${!V[@]}"; do [[ "$k" == *_IMAGE ]] && PINNED[${V[$k]}]=1; done
+  if have kustomize; then
+    for d in apps/online-boutique/overlays/*/ apps/online-boutique/canary/; do
+      [[ -f "${d}kustomization.yaml" ]] || continue
+      if ! rendered=$(kustomize build "$d" 2>&1); then bad "$d: kustomize build failed: $(head -3 <<<"$rendered")"; continue; fi
+      while IFS= read -r img; do
+        [[ "$img" == "${V[BOUTIQUE_IMAGE_REGISTRY]:-}/"*":${V[BOUTIQUE_VERSION]:-}" || -n "${PINNED[$img]:-}" || "$img" == *@sha256:* ]] \
+          || bad "$d: rendered image '$img' is not ${V[BOUTIQUE_VERSION]:-} from the Boutique registry, a versions.env *_IMAGE, or digest-pinned"
+      done < <(sed -n -E 's/^[[:space:]]*(-[[:space:]]+)?image:[[:space:]]*"?([^"[:space:]#]+)"?.*/\2/p' <<<"$rendered" | sort -u)
+    done
+  else
+    bad "kustomize not installed: cannot check rendered Boutique images"
+  fi
+fi
+
 # ---- Application targetRevision / repoURL vs versions.env ------------------------------------
 declare -A CHART_VER=(
   [cilium]=CILIUM_CHART_VERSION [argo-cd]=ARGOCD_CHART_VERSION [cert-manager]=CERT_MANAGER_VERSION
