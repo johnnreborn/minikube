@@ -1,6 +1,6 @@
 # Shared Gateway `edge` and the platform-owned routes (SPEC §5.5, ARCHITECTURE §7.2). Owned by the `gateway` app.
 # Resources set their own namespaces: gateway, kube-system (ReferenceGrant) and argocd (route).
-# App routes live with their app (apps/online-boutique/routes); grafana's route comes in Phase 7.
+# App routes live with their app (apps/online-boutique/routes).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
@@ -10,3 +10,4 @@ resources:
   - route-hubble.yaml
   - referencegrant-hubble.yaml
   - route-argocd.yaml
+  - route-grafana.yaml
