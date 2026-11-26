@@ -1,0 +1,73 @@
+# OpenTelemetry Collector gateway (SPEC §5.7, ADR-0006). Chart: versions.env OTEL_COLLECTOR_CHART_VERSION,
+# image: versions.env OTEL_COLLECTOR_IMAGE (checked by scripts/check-versions.sh).
+fullnameOverride: otel-collector          # Service otel-collector:4317 (the apps' COLLECTOR_SERVICE_ADDR)
+mode: deployment
+replicaCount: 1
+image:
+  repository: otel/opentelemetry-collector-contrib
+  tag: "0.163.2"
+presets:
+  kubernetesAttributes:
+    enabled: true                         # k8sattributes processor + RBAC: k8s.pod.name / namespace on spans
+nodeSelector:
+  node.boutique.io/pool: infra
+tolerations:
+  - key: node.boutique.io/dedicated
+    operator: Equal
+    value: infra
+    effect: NoSchedule
+resources:
+  requests: {cpu: 100m, memory: 256Mi}
+  limits: {memory: 512Mi}
+ports:
+  jaeger-compact: {enabled: false}
+  jaeger-thrift: {enabled: false}
+  jaeger-grpc: {enabled: false}
+  zipkin: {enabled: false}
+  metrics:                                # the collector's own telemetry
+    enabled: true
+  spanmetrics:                            # the prometheus exporter: span RED + service graph metrics
+    enabled: true
+    containerPort: 8889
+    servicePort: 8889
+    protocol: TCP
+serviceMonitor:
+  enabled: true
+  metricsEndpoints:
+    - port: metrics
+    - port: spanmetrics
+      honorLabels: true
+config:
+  receivers:
+    jaeger: null
+    zipkin: null
+    prometheus: null
+  connectors:
+    spanmetrics:                          # RED metrics from traces; exemplars link them back to a trace (AC-7.9)
+      histogram:
+        explicit:
+          buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2500ms, 5s, 10s]
+      exemplars:
+        enabled: true
+      metrics_flush_interval: 15s
+    servicegraph: {}                      # edges for the Grafana Tempo service map (datasource serviceMap)
+  exporters:
+    debug: null
+    otlp/tempo:
+      endpoint: tempo.observability.svc.cluster.local:4317
+      tls:
+        insecure: true                    # plaintext inside the cluster (Tempo serves no TLS here)
+    prometheus:
+      endpoint: 0.0.0.0:8889
+      enable_open_metrics: true           # exemplars need OpenMetrics
+  service:
+    pipelines:
+      logs: null
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, batch]
+        exporters: [otlp/tempo, spanmetrics, servicegraph]
+      metrics:
+        receivers: [spanmetrics, servicegraph]
+        processors: [memory_limiter, batch]
+        exporters: [prometheus]

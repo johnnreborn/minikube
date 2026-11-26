@@ -1,0 +1,35 @@
+# wave 0: otel-collector (trace pipeline and span metrics).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: otel-collector
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: platform
+  sources:
+    - repoURL: https://open-telemetry.github.io/opentelemetry-helm-charts
+      chart: opentelemetry-collector
+      targetRevision: 0.178.3
+      helm:
+        releaseName: otel-collector
+        valueFiles:
+          - $values/observability/otel-collector/values.yaml
+    - repoURL: https://github.com/johnnreborn/minikube
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff: {duration: 20s, factor: 2, maxDuration: 3m}
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true
+      - PruneLast=true
