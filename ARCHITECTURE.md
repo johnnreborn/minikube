@@ -325,7 +325,7 @@ sequenceDiagram
   A->>A: cilium·argocd 인수(adoption), 이후 웨이브 순으로 동기화
 ```
 
-부트스트랩 예외(Git이 아닌 명령형으로 생성되는 것): Docker 네트워크, kind 클러스터, Gateway API·Prometheus Operator CRD의 최초 적용(이후 Argo CD 앱이 인수, ADR-0012), 최초 Cilium/Argo CD 설치, repo 자격증명 Secret, Grafana 관리자 Secret. 이 목록 외 리소스는 반드시 Argo CD가 관리한다.
+부트스트랩 예외(Git이 아닌 명령형으로 생성되는 것): Docker 네트워크, kind 클러스터, CoreDNS 분산 패치(kubeadm 관리 리소스, ADR-0013), Gateway API·Prometheus Operator CRD의 최초 적용(이후 Argo CD 앱이 인수, ADR-0012), 최초 Cilium/Argo CD 설치, repo 자격증명 Secret, Grafana 관리자 Secret. 이 목록 외 리소스는 반드시 Argo CD가 관리한다.
 
 ### 10.2 애플리케이션 트리와 Sync Wave
 
@@ -433,7 +433,7 @@ online-boutique-platform/
 
 | 장애 | 예상 영향 | 완화 | 검증 |
 |---|---|---|---|
-| 앱 워커 1대 중단 | 해당 존 Pod 소실, VIP 리더일 경우 일시 단절 | 존 분산 레플리카, PDB, toleration 30s, L2 Lease 재획득 | AC-4.5, AC-9.2 |
+| 앱 워커 1대 중단 | 해당 존 Pod 소실, VIP 리더일 경우 일시 단절. 죽은 백엔드는 노드 NotReady 처리(약 40~50초)까지 남음 | 요청 경로 서비스 2+ 레플리카 존 분산(`nodeTaintsPolicy: Honor`), PDB, frontend·redis-cart toleration 30s, CoreDNS 분산, L2 Lease 재획득(ADR-0013) | AC-4.5, AC-9.2 |
 | Pod 크래시 | 단일 레플리카 서비스 일시 오류 | Deployment 재생성, 알림 | AC-9.3 |
 | 잘못된 Git 변경 | Degraded | 헬스 기반 감지, `git revert` | AC-9.4 |
 | 수동 드리프트 | 의도치 않은 상태 | selfHeal | AC-3.4, AC-9.5 |
@@ -472,3 +472,4 @@ online-boutique-platform/
 | 0010 | East-West L7 로드밸런싱(Cilium lb-l7)은 채택하지 않음 |
 | 0011 | kubelet·controller-manager·scheduler 스크레이프 TLS 검증 생략(3개 타깃 예외) |
 | 0012 | 부트스트랩에서 Prometheus Operator CRD를 먼저 적용하고 Cilium을 같은 values 레이어로 설치 |
+| 0013 | 단일 앱 워커 장애 내성: 요청 경로 서비스 2 레플리카, 존 분산에서 죽은 노드 제외, CoreDNS 분산 |

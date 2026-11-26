@@ -277,6 +277,8 @@ nodes:
 2. `KIND_EXPERIMENTAL_DOCKER_NETWORK=kind-boutique kind create cluster --config …` (클러스터가 이미 있으면 건너뜀).
 3. kubeconfig 컨텍스트 `kind-boutique` 확인.
 
+CoreDNS(kubeadm 관리, 2 레플리카)는 부트스트랩이 hostname 분산(`topologySpreadConstraints`, `DoNotSchedule`, `nodeTaintsPolicy: Honor`)으로 패치한다(`bootstrap/scripts/coredns-spread.sh`, `make cni`의 일부). 클러스터 생성 직후에는 Ready 노드가 하나뿐이라 두 Pod가 같은 노드에 몰릴 수 있고, 그 노드가 죽으면 클러스터 DNS 전체가 멈춘다(ADR-0013).
+
 ### 5.3 Cilium 사양
 
 `platform/cilium/values.yaml` (부트스트랩과 Argo CD 공용, 키는 고정 버전의 `helm show values`로 검증):
@@ -472,13 +474,15 @@ Alertmanager: 실습용 `null` 수신자 기본 + (선택) 로컬 웹훅. 판정
 | 대상 | 변경 |
 |---|---|
 | 전체 | `namespace: boutique`, 공통 라벨 `app.kubernetes.io/part-of: online-boutique`, requests/limits 확인·보강 |
-| frontend | replicas 3, zone `topologySpreadConstraints`, PDB minAvailable 2, unreachable/not-ready toleration 30s |
-| productcatalogservice | replicas 3, zone 분산(L7 LB 실험 대상) |
+| frontend | replicas 3, zone `topologySpreadConstraints`(`nodeTaintsPolicy: Honor`), PDB minAvailable 2, unreachable/not-ready toleration 30s |
+| productcatalogservice | replicas 3, zone 분산(`nodeTaintsPolicy: Honor`, L7 LB 실험 대상) |
+| currencyservice · cartservice | replicas 2, zone 분산(`nodeTaintsPolicy: Honor`) — 홈 화면 요청 경로의 단일 노드 장애 내성(ADR-0013) |
+| redis-cart | 단일 레플리카(emptyDir) 유지, unreachable/not-ready toleration 30s. 재스케줄 시 장바구니는 사라진다(ADR-0013) |
 | frontend-external | `lbipam.cilium.io/ips: 172.30.250.20` (L4 경로로 유지) |
 | 트레이싱 | 업스트림이 트레이싱을 지원하는 서비스에 `ENABLE_TRACING=1`, `COLLECTOR_SERVICE_ADDR=otel-collector.observability.svc.cluster.local:4317` — 실제 env 이름과 지원 서비스 목록은 고정 버전 소스(업스트림 kustomize 트레이싱 컴포넌트)에서 확인 |
 | loadgenerator | 사용자 수·속도를 낮게 조정(env 이름은 고정 버전에서 확인), 대상은 내부 frontend Service |
 | 보안 컨텍스트 | PSA restricted 위반 항목(예: `seccompProfile`)만 패치로 보강 |
-| frontend-canary | `apps/online-boutique/canary/`: frontend와 동일 이미지 1 레플리카, 식별 가능한 env(배너), Service `frontend-canary` |
+| frontend-canary | `apps/online-boutique/canary/`: frontend와 동일 이미지 2 레플리카(zone 분산, `nodeTaintsPolicy: Honor`), `progressDeadlineSeconds: 180`, 식별 가능한 env(배너), Service `frontend-canary` |
 
 ### 5.10 설정·시크릿 관리
 
@@ -932,3 +936,4 @@ COULD 항목 중 FR-NET-05, FR-L7-08, FR-ISO-11은 채택 시 AC를 추가한다
 | 1.0-draft+7 | 2026-11-26 | §6.7: AC-7.5 판정 주석(업스트림 Node 서비스의 parentSpanId 누락) — 사용자 승인 |
 | 1.0-draft+8 | 2026-11-26 | §6.8: L7은 감사 모드에서도 집행되므로 2단계 L7(가시성 → 화이트리스트) 절차 명시, l4-test 기본 거부 추가 — 사용자 승인 |
 | 1.0-draft+9 | 2026-11-27 | §6.8 AC-8.5·§7.3: L7 거부 판정을 HTTP 403 → gRPC `grpc-status: 7`/`Access denied` + Hubble L7 `DROPPED`로(Cilium 1.20의 gRPC 거부 방식 실측) — 사용자 승인 |
+| 1.0-draft+10 | 2026-11-27 | §5.2·§5.9: 단일 노드 장애 내성(AC-9.2) — currencyservice·cartservice·frontend-canary 2 레플리카, 존 분산의 `nodeTaintsPolicy: Honor`, redis-cart toleration 30s, frontend-canary `progressDeadlineSeconds: 180`, CoreDNS 분산 부트스트랩 패치(ADR-0013) — 사용자 승인 |
