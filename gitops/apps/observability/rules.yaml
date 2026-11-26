@@ -1,0 +1,27 @@
+# wave 0: PrometheusRule alerts.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: rules
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/johnnreborn/minikube
+    targetRevision: main
+    path: observability/rules
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff: {duration: 20s, factor: 2, maxDuration: 3m}
+    syncOptions:
+      - CreateNamespace=false
+      - PruneLast=true

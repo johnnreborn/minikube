@@ -1,0 +1,78 @@
+# User-defined alerts (SPEC §5.7). Metric names and labels were taken from the live Prometheus in Phase 7:
+#   kube_deployment_* (kube-state-metrics 93.3.1 chart), traces_span_metrics_* (OTel spanmetrics connector 0.163.2),
+#   envoy_http_downstream_rq_xx with conn manager listener-secure / listener-insecure (Cilium 1.20.5 Gateway),
+#   cilium_unreachable_nodes (cilium-agent), argocd_app_info (Argo CD 3.5.7).
+# Alertmanager uses the chart's "null" receiver; judge by ALERTS{alertstate="firing"} (SPEC §10 Q6).
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: boutique-alerts
+  labels:
+    app.kubernetes.io/part-of: online-boutique
+spec:
+  groups:
+    - name: boutique.rules
+      rules:
+        # "fewer available replicas than intended" - a Deployment scaled to 0 is also unavailable: its spec.replicas
+        # is 0 then, so comparing available < spec alone would never fire (every boutique workload should run)
+        - alert: BoutiqueDeploymentUnavailable
+          expr: |
+            (kube_deployment_status_replicas_available{namespace="boutique"}
+              < kube_deployment_spec_replicas{namespace="boutique"})
+            or (kube_deployment_spec_replicas{namespace="boutique"} == 0)
+          for: 2m
+          labels: {severity: critical}
+          annotations:
+            summary: "boutique/{{ $labels.deployment }} has fewer available replicas than intended"
+        # share of failed checkout requests: checkoutservice SERVER spans only (client spans would dilute it), health
+        # checks excluded
+        - alert: BoutiqueCheckoutErrorRateHigh
+          expr: |
+            sum(rate(traces_span_metrics_calls_total{service_name="checkoutservice", span_kind="SPAN_KIND_SERVER",
+                span_name!="grpc.health.v1.Health/Check", status_code="STATUS_CODE_ERROR"}[5m]))
+            /
+            sum(rate(traces_span_metrics_calls_total{service_name="checkoutservice", span_kind="SPAN_KIND_SERVER",
+                span_name!="grpc.health.v1.Health/Check"}[5m]))
+            > 0.10
+          for: 2m
+          labels: {severity: critical}
+          annotations:
+            summary: "checkout error ratio {{ $value | humanizePercentage }} > 10%"
+        - alert: BoutiqueFrontendLatencyP95High
+          expr: |
+            histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{
+                service_name="frontend", span_kind="SPAN_KIND_SERVER"}[5m]))) > 1000
+          for: 10m
+          labels: {severity: warning}
+          annotations:
+            summary: "frontend p95 latency {{ $value | humanize }}ms > 1s"
+    - name: platform.rules
+      rules:
+        - alert: GatewayHigh5xxRate
+          expr: |
+            sum(rate(envoy_http_downstream_rq_xx{envoy_http_conn_manager_prefix=~"listener-(secure|insecure)",
+                envoy_response_code_class="5"}[5m]))
+            /
+            sum(rate(envoy_http_downstream_rq_xx{envoy_http_conn_manager_prefix=~"listener-(secure|insecure)"}[5m]))
+            > 0.05
+          for: 5m
+          labels: {severity: critical}
+          annotations:
+            summary: "Gateway 5xx ratio {{ $value | humanizePercentage }} > 5%"
+        # agent not ready on a node, its metrics unreachable, or agents report unreachable nodes
+        - alert: CiliumAgentUnhealthy
+          expr: |
+            (kube_daemonset_status_number_unavailable{namespace="kube-system", daemonset="cilium"} > 0)
+            or (up{job="cilium-agent"} == 0)
+            or (cilium_unreachable_nodes{job="cilium-agent"} > 0)
+          for: 5m
+          labels: {severity: critical}
+          annotations:
+            summary: "Cilium agent unavailable or nodes unreachable"
+        - alert: ArgoAppNotHealthy
+          expr: |
+            argocd_app_info{sync_status="OutOfSync"} == 1 or argocd_app_info{health_status="Degraded"} == 1
+          for: 10m
+          labels: {severity: warning}
+          annotations:
+            summary: "Argo CD app {{ $labels.name }}: sync={{ $labels.sync_status }} health={{ $labels.health_status }}"

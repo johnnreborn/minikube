@@ -1,0 +1,19 @@
+# Git-defined Grafana dashboards (SPEC §5.7); the sidecar loads every ConfigMap labelled grafana_dashboard=1.
+# Kubernetes dashboards come with kube-prometheus-stack and Cilium/Hubble dashboards with the Cilium chart.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: observability
+generatorOptions:
+  disableNameSuffixHash: true
+  labels:
+    grafana_dashboard: "1"
+configMapGenerator:
+  - name: dashboard-boutique-golden-signals
+    files:
+      - boutique-golden-signals.json
+  - name: dashboard-gateway-envoy
+    files:
+      - gateway-envoy.json
+  - name: dashboard-argocd-apps
+    files:
+      - argocd-apps.json
