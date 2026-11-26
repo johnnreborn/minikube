@@ -12,7 +12,7 @@ spec:
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      maxSurge: 0            # one pod per zone with DoNotSchedule: a surge pod could not be placed evenly
+      maxSurge: 0            # replace in place, one zone at a time (a surge pod would also be schedulable: maxSkew 1)
       maxUnavailable: 1
   template:
     metadata:
