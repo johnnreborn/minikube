@@ -1,4 +1,4 @@
-# Lab overlay for the vendored Online Boutique (SPEC §5.9), plus the frontend canary. Tracing comes in Phase 7.
+# Lab overlay for the vendored Online Boutique (SPEC §5.9), plus the frontend canary.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: boutique
@@ -25,3 +25,4 @@ patches:
   - path: patches/productcatalogservice.yaml
   - path: patches/frontend-external.yaml
   - path: patches/loadgenerator.yaml
+  - path: patches/tracing.yaml
