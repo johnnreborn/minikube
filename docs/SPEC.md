@@ -728,7 +728,7 @@ flowchart LR
 | AC-8.2 | MUST | `policyAuditMode=false`, boutique 엔드포인트 전부 ingress·egress enforcement 활성 | `cilium-dbg endpoint list`(노드별) |
 | AC-8.3 | MUST | 회귀: AC-5.4, 5.5, 5.6, 6.3, 6.6, 7.4, 7.5 재통과 | 해당 함수 재실행 |
 | AC-8.4 | MUST | 음성 테스트 전부 차단 + Hubble `DROPPED (Policy denied)` 증거: ① frontend→paymentservice:50051 ② loadgenerator→cartservice:7070 ③ boutique Pod→외부 IP:443 ④ boutique Pod→kube-apiserver ⑤ 다른 NS Pod→frontend:8080 ⑥ boutique Pod→grafana:3000 ⑦ boutique Pod→argocd-server:8080 | debug_curl + hubble |
-| AC-8.5 | MUST | L7 음성: checkoutservice identity로 `CartService/AddItem` → HTTP 403, `CartService/GetCart` → HTTP 200(프록시 통과) | `debug_curl … --http2-prior-knowledge -X POST -H 'content-type: application/grpc'` |
+| AC-8.5 | MUST | L7 음성: checkoutservice identity로 `CartService/AddItem` → 프록시 거부(gRPC 요청이므로 HTTP 200 + `grpc-status: 7`, `grpc-message: Access denied`, `server: envoy`) 그리고 Hubble L7 `DROPPED`; `CartService/GetCart` → Hubble L7 `FORWARDED`, 백엔드 응답(`Access denied` 아님) | `debug_curl … --http2-prior-knowledge -X POST -H 'content-type: application/grpc'` + `hubble observe --protocol http` |
 | AC-8.6 | MUST | 양성: 트레이싱 서비스→otel-collector:4317 허용, DNS 질의가 Hubble에 이름과 함께 표시 | hubble DNS 플로우 |
 | AC-8.7 | SHOULD | Hubble HTTP 메트릭에 boutique gRPC 서비스별 시계열 존재(대시보드 패널 채워짐) | `prom_query` |
 | AC-8.8 | SHOULD | boutique PSA enforce=restricted, 위반 0, 전 Pod Running | NS 라벨, 이벤트 |
@@ -803,7 +803,7 @@ kubectl -n boutique debug pod/<checkoutservice-pod> \
 ```
 
 - 셸 없는 이미지에서도 실제 워크로드의 Cilium identity로 요청을 보낸다. 라벨을 흉내 낸 테스트 Pod를 쓰지 않는다(Service 셀렉터에 잡혀 실제 트래픽을 받을 위험).
-- 프록시가 거부하면 HTTP 403, 통과하면 백엔드가 gRPC 오류 상태를 담은 HTTP 200을 반환한다 → HTTP 상태로 L7 판정이 가능하다.
+- gRPC 요청(`content-type: application/grpc`)은 프록시가 거부해도 HTTP 200에 `grpc-status: 7`(PERMISSION_DENIED), `grpc-message: Access denied`로 답한다(Cilium 1.20 실측; gRPC가 아닌 HTTP 요청은 403). 통과하면 백엔드가 자신의 gRPC 상태를 돌려준다 → gRPC 상태·메시지와 Hubble L7 판정(`DROPPED`/`FORWARDED`)으로 L7 판정을 한다.
 - ephemeral 컨테이너는 Pod에서 제거되지 않는다. 테스트 후 Pod를 재생성할 필요는 없지만 반복 실행 시 개수가 늘어나므로 컨테이너 이름에 타임스탬프를 붙인다.
 
 ### 7.4 장애 주입과 selfHeal의 공존
@@ -931,3 +931,4 @@ COULD 항목 중 FR-NET-05, FR-L7-08, FR-ISO-11은 채택 시 AC를 추가한다
 | 1.0-draft+6 | 2026-11-26 | §5.3: 부트스트랩이 Prometheus Operator CRD를 먼저 적용하고 Argo CD와 같은 Cilium values 레이어로 설치(재구축 시 인수 diff를 추적 메타데이터로 유지, ADR-0012) — 사용자 승인 |
 | 1.0-draft+7 | 2026-11-26 | §6.7: AC-7.5 판정 주석(업스트림 Node 서비스의 parentSpanId 누락) — 사용자 승인 |
 | 1.0-draft+8 | 2026-11-26 | §6.8: L7은 감사 모드에서도 집행되므로 2단계 L7(가시성 → 화이트리스트) 절차 명시, l4-test 기본 거부 추가 — 사용자 승인 |
+| 1.0-draft+9 | 2026-11-27 | §6.8 AC-8.5·§7.3: L7 거부 판정을 HTTP 403 → gRPC `grpc-status: 7`/`Access denied` + Hubble L7 `DROPPED`로(Cilium 1.20의 gRPC 거부 방식 실측) — 사용자 승인 |
