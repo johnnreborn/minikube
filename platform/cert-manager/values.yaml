@@ -1,0 +1,24 @@
+# cert-manager values (SPEC §6.6), used by the `cert-manager` Application. Chart version: versions.env
+# CERT_MANAGER_VERSION. values-monitoring.yaml (ServiceMonitor) is added in Phase 7.
+# Keys checked against `helm show values cert-manager --version <pinned>` (Phase 6).
+crds:
+  enabled: true
+  keep: true                   # never delete the CRDs (and with them every Certificate/Issuer) on uninstall
+
+global:
+  # merged with each component's own nodeSelector (kubernetes.io/os: linux); ARCHITECTURE §4: infra node
+  nodeSelector:
+    node.boutique.io/pool: infra
+
+# there is no global toleration key: each of the four components needs its own
+tolerations: &infra
+  - key: node.boutique.io/dedicated
+    operator: Equal
+    value: infra
+    effect: NoSchedule
+webhook:
+  tolerations: *infra
+cainjector:
+  tolerations: *infra
+startupapicheck:                # post-install hook (Argo CD PostSync): proves the webhook answers
+  tolerations: *infra
