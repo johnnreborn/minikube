@@ -30,6 +30,8 @@ DESTRUCTIVE=1 make verify-all                   # 모든 AC (노드 중단·장�
   revert한다(작업 트리가 깨끗해야 한다).
 - Phase 9의 AC-9.1(클린 재구축)은 `scripts/rebuild.sh`가 남긴 기록으로 판정하므로, 재구축 없이 돌린
   `make verify-all`에서는 AC-9.1이 FAIL이다.
+- Phase 2의 AC-2.4(Cilium 연결성 시험)는 Cilium만 있는 상태를 전제로 한다. GitOps까지 올라간 클러스터의 `verify-all`에서는
+  실패할 수 있다(사전 실행에서 실패). 릴리스 판정은 `scripts/rebuild.sh`의 순서로 했다(SPEC §6.9 AC-9.1 주석).
 - 접속 방법과 계정: [docs/runbooks/access.md](docs/runbooks/access.md)
 - 지우기: `make down`(클러스터와 Docker 네트워크 삭제, 확인 필요)
 

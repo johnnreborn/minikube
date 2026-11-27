@@ -5,8 +5,8 @@
 
 ## 현재 상태
 
-- 현재 Phase: **9 — 복원력·최종 인수** (⬜ 대기, Phase 8 ✅ 완료 2026-11-27)
-- 다음 행동: 사용자 확인 후 Phase 9 착수 (`/phase 9`). 네트워크 정책 집행 중(감사 모드 꺼짐). Cilium 변경은 `scripts/cilium-sync.sh`로(diff 확인 후 `--yes`, prune 안 함). 이제 클러스터 변경은 commit + push로만 반영된다(Argo CD가 `origin/main`을 본다). Cilium은 수동 sync
+- 현재 Phase: **전체 완료** — Phase 9 ✅ (2026-11-27), 릴리스 `v1.0.0`
+- 다음 행동: 남은 Phase 없음. 운영 규칙은 그대로: 클러스터 변경은 commit + push로만(Argo CD가 `origin/main`을 본다), Cilium은 `scripts/cilium-sync.sh`로 수동 sync(diff 확인 후 `--yes`, prune 안 함), 네트워크 정책 집행 중(감사 모드 꺼짐). 후속 후보는 아래 Phase 9 세션 로그의 남은 리스크
 - 차단 요소: 없음. 알려진 환경 문제: 외부 인터넷 HTTPS 간헐 멈춤(WSL VM 밖, 편차 참조) — AC-2.4처럼 외부 대상에 의존하는 검증이 간헐 실패할 수 있음
 - SPEC §10 Q1~Q6: 사용자가 기본값 승인(2026-11-25)
 
@@ -23,7 +23,7 @@
 | 6 | L7 Gateway API | ✅ 완료 | 9/9 | 1/1 | `phase-6-done` | 2026-11-26 |
 | 7 | 관측 가능성 | ✅ 완료 | 9/9 | 1/1 | `phase-7-done` | 2026-11-26 |
 | 8 | 네트워크 격리 | ✅ 완료 | 6/6 | 4/4 | `phase-8-done` | 2026-11-27 |
-| 9 | 복원력·최종 인수 | ⬜ | 0/7 | 0/1 | | |
+| 9 | 복원력·최종 인수 | ✅ 완료 | 7/7 | 1/1 | `phase-9-done` | 2026-11-27 |
 
 상태: ⬜ 대기 · 🔄 진행 중 · ✅ 완료 · ⚠️ 차단
 
@@ -35,9 +35,21 @@
 | 카나리 실측 비율 (200회) | 9.5% (canary 19 / stable 181, 전부 200). 시험 실행도 19/200 | 6 |
 | East-West L7 LB 전/후 max/min 비율 | 전 3.87·∞ → 후 1.00·1.00 (각 2회, 아래 표). **미채택**(ADR-0010) | 6 |
 | 알림 발화까지 시간 | paymentservice 0 레플리카 주입 후 `BoutiqueDeploymentUnavailable` 151초, `BoutiqueCheckoutErrorRateHigh` 211초(한도 600초). 복구 후 두 알림 해제 391초. 주입 중 별도 주문 부하(약 3초 간격) 사용 | 7 |
-| 노드 장애 시 서비스 복구 시간 | | 9 |
-| 클린 재구축 소요 시간 | | 9 |
-| 클러스터 requests 합계 (CPU / Mem) | | 9 |
+| 노드 장애 시 서비스 복구 시간 | 공식 재구축(`410cd27`), zone-b 워커 `docker stop` 후 **+60.5초**(마지막 실패 뒤 첫 성공 요청을 **보낸** 시각, 한도 90초). 그 응답 도착은 **+65.0초**(frontend 로그). 이후 오류 0. 409회 중 120회 실패(000 113·500 7). NotReady +48.0초, frontend 3/3 +90.3초(한도 120초). 정지 노드에 redis-cart는 있었고 **CoreDNS와 Gateway VIP lease는 없었음**. 배치별 이력은 아래 표 | 9 |
+| 클린 재구축 소요 시간 | `make up` **580초**(cluster-up 19 + cni 167 + gitops-bootstrap 394, 목표 ≤ 1800초). `make down` 12초, `wait-sync` 2초, 두 번째 `make up` 6초(멱등). Phase 1~8 검증 3861초, Phase 9 실행 AC 735초, 전체 약 87분. kind 노드를 새로 만들어 노드 안 이미지는 다시 받음(레지스트리 캐시 설정 없음, 호스트의 노드 이미지는 남아 있음) | 9 |
+| 클러스터 requests 합계 (CPU / Mem) | **4.21 vCPU / 5.67 GiB**(한도 6 / 10). 실사용 CPU 1.01 vCPU(5분 rate), working set **7.46 GiB**. 네임스페이스 requests: boutique 2.47 / 1.84, observability 0.85 / 3.49, kube-system 0.85 / 0.23, 그 밖은 각 0.03 vCPU·0.07 GiB 이하. argocd·cert-manager·kube-system 등에 requests 없는 Pod가 있어 **합계는 실제 필요량보다 작다** | 9 |
+
+### 노드 장애 시험 이력 (AC-9.2, zone-b 워커 = boutique-worker3)
+
+정지 노드에 있던 것만 ✔. 복구 = 마지막 실패 뒤 첫 성공 요청의 전송 시각.
+
+| 실행 로그 | 시점 | redis-cart | CoreDNS | Gateway VIP lease | 복구 | 판정 |
+|---|---|---|---|---|---|---|
+| `phase-9-20261126T175525Z` | DNS·redis 개정 전 | – | – | ✔ | 50.6초 | PASS |
+| `phase-9-20261126T210101Z` | 개정 전, 첫 재구축 클러스터 | – | ✔ | – | 69.1초 | PASS |
+| `phase-9-20261127T020351Z` | 개정 전, 두 번째 재구축 | ✔ | ✔ | – | 197.4초 | **FAIL** |
+| `phase-9-20261127T023142Z` | 개정 후, 같은 클러스터 | ✔ | ✔ | – | 56.5초(응답 61.4초) | PASS |
+| `phase-9-20261127T035549Z` | 개정 후, **공식 재구축** | ✔ | – | – | 60.5초(응답 65.0초) | PASS |
 
 ### East-West L7 LB 측정 (AC-6.11, COULD)
 
@@ -126,6 +138,17 @@ Hubble L7 플로우(목적지 측 REQUEST, gRPC 헬스체크 제외), 상품 페
 | 2026-11-26 | 8 | 정식 검증 3회: 1차 MUST 4/6(AC-8.5 SPEC 기준 오류, AC-8.6 테스트의 hubble 필터 조합이 항상 0건), 2차 5/6(AC-8.2: `pipefail`+`grep -q` SIGPIPE 경쟁으로 정상 agent를 감사 모드로 오판 — 프로젝트에서 세 번째로 겪은 같은 버그, `hubble_expect`도 수정), **3차 MUST 6/6, SHOULD 4/4** | 기준·정책 변경 없음(AC-8.5는 승인된 SPEC 변경) |
 | 2026-11-27 | 8 | 절차 실수: lint와 커밋을 `;`로 이어 lint 실패(제가 멈춘 kubeconform을 종료한 단계) 상태에서 테스트 커밋 `acbee9b`가 만들어짐. 직후 같은 트리에서 `make lint` 통과 확인 | 커밋은 테스트 파일뿐 |
 | 2026-11-26 | 8 | `tests/lib.sh`: `AC_ONLY`(지정 AC만 실행), `debug_curl_rc`(ephemeral 컨테이너의 curl 종료 코드). 커밋 직전 `/verify`는 Phase 4 회귀(파괴적 제외). 집행 후 Phase 4 회귀도 MUST 4/4(l4-test 격리 후 VIP·소스 보존 유지) | |
+| 2026-11-27 | 9 | **착수 점검: Phase 8까지의 구성으로는 AC-9.2를 통과할 수 없거나 Pod 배치에 달려 있었음** — ① 존 분산이 죽은 노드의 존도 계산(`nodeTaintsPolicy` 기본 `Ignore`) ② CoreDNS 2개가 모두 zone-b 워커 ③ 단일 레플리카는 toleration 300초. 별도로 AC-8.1은 남아 있는 옛 감사 파일 때문에 새 클러스터에서도 PASS가 될 수 있었음 → 클러스터보다 오래된 근거는 SKIP(AC-7.10 롤아웃 스냅샷도 같은 처리) | ADR-0013(승인), `tests/phase-8.sh`. ①은 스케줄러 동작에 근거한 판단이며 개정 전 구성으로 장애 시험을 하지는 않았음 |
+| 2026-11-27 | 9 | **SPEC 변경(모두 승인, 반영)** +10: currency·cart·canary 2 레플리카, `nodeTaintsPolicy: Honor`, redis toleration 30초, canary `progressDeadlineSeconds: 180`, CoreDNS 분산 부트스트랩 패치. +11: Argo CD Git 감지 60초 + jitter 30초(이전 설정 120+60초에서 감지 307초 관측), AC-7.10 재구축 판정. +12: 아래 사전 실행 대응. +13: 아래 두 번째 재구축 대응 | SPEC 변경 이력 `1.0-draft+10`~`+13` |
+| 2026-11-27 | 9 | **재구축 전 사전 실행(Phase 1~8)에서 4건 FAIL**(AC-2.4, 5.6, 7.10, 8.3) — 장애 시험의 흔적과, GitOps까지 올라간 클러스터에서 Phase 2를 다시 돌린 영향. 대응(+12): AC-2.4는 Cilium 단독 상태(`cni` 직후)에서 판정, 노드 장애 시험 뒤 loadgenerator 통계 초기화(AC-5.6, 이를 포함하는 AC-8.3), AC-7.10은 `reason: Unknown` 종료를 제외. **기준 수치는 그대로이고 판정에 들어가는 구간·대상을 좁힌 변경.** 그 결과 NFR-01의 `make up` → `make verify-all`을 글자 그대로 실행하지는 않았고, AC-9.1 주석의 순서로 Phase 1~9를 검증. 완성된 클러스터에서 `verify-all`을 다시 돌리면 AC-2.4는 실패할 수 있음 | 사용자 승인("파괴 시험 포함", "cni 직후 실행", "시험 후 통계 초기화", "노드 재시작만 제외") |
+| 2026-11-27 | 9 | 보강: `coredns-spread.sh`(`make cni`), 차트 다운로드 재시도, Cilium 인수 전에 비교 오류·prune 표시가 없어질 때까지 대기(`cilium-sync.sh`와 공용), 전체 앱 대기 25분. lint는 스키마·차트 다운로드만 재시도(잘못된 리소스는 즉시 실패, 잘못된 Service로 확인). AC-4.5 뒤 존 재분산. 작성 중 제 실수(canary 주석 160자 초과, `rebuild.sh`의 `--argjson stages` 누락)와 AC-7.10의 빈 값 PASS 오판은 수정 | |
+| 2026-11-27 | 9 | 세션 중 인라인 검증 명령의 `rm -rf "$d"`(mktemp 변수)가 Claude Code 내장 안전 검사에 거부돼 실행되지 않음. 우회하지 않고 비재귀 삭제로 바꿈 | |
+| 2026-11-27 | 9 | **첫 번째 재구축 실패**(`rebuild-20261126T194144Z`): `gitops-bootstrap`의 Cilium 인수에서 `argocd app diff: cache: key is missing`. **원인은 제 부트스트랩 결함** — Argo CD를 `values.yaml`만으로 설치해 자기 sync가 redis exporter를 추가하며 redis를 교체했고, 변경이 없는 `cilium` 앱의 캐시가 다시 써지지 않음("부트스트랩과 Argo CD는 같은 파일을 쓴다" 위반). 수정 `511eaee`, `check-versions`가 두 values 목록 일치를 강제. Phase 1·2는 그 실행에서 전부 PASS(AC-2.4 포함). 컨트롤러를 재시작하는 복구 분기는 **한 번도 실행되지 않음** | `--wait=legacy`·CRD 선적용 경로는 빈 클러스터에서 동작 확인(Phase 3·7의 미확인 항목 해소) |
+| 2026-11-27 | 9 | **두 번째 재구축 실패**(`rebuild-20261127T004844Z`): AC-9.2만 FAIL(복구 197.4초). redis-cart가 정지 노드에 있어 +84.7초까지 연속 실패(한도 여유 약 5초), +196.9초의 1건은 `metadata.google.internal` 조회가 EndpointSlice에서 `ready=false`인 죽은 CoreDNS로 전달돼 응답이 5015ms 걸림(리졸버 기본 5초 뒤의 재시도로 판단, 프로브 제한 5초). 대응(+13): boutique DNS `timeout: 1`·`attempts: 3`, redis toleration 10초, AC-9.2를 redis가 정지 노드에 있는 상태에서 시작. 90초·이후 오류 0·요청 제한 5초는 그대로. **Cilium이 제외된 백엔드로 DNS를 보낸 이유는 미확인** — 원인 제거가 아니라 완화. 정정: 분석 중 제가 그 질의가 "살아 있는 CoreDNS"로 갔다고 설명한 것은 틀림(10.244.4.0/24는 정지한 worker3) | ADR-0013 개정, 사용자 승인 |
+| 2026-11-27 | 9 | **세 번째 재구축 통과**(`rebuild-20261127T024128Z`, `410cd27`, 무개입): Phase 1~8 FAIL 0, Phase 9 실행 AC(9.1~9.5, 9.7) PASS. SKIP 2건: AC-6.11(미채택), AC-8.1(이전 클러스터에서 합격한 일회성 감사). 그 전에 같은 커밋으로 기존 클러스터에서 AC-9.2 PASS(`T023142Z`) — 정지 노드에 CoreDNS가 있었고, NotReady 이후에도 질의 유실이 재현(4건, 최대 약 139초 뒤). 해당 홈 요청 3건은 약 1.02초에 200 | 시험 승인 "①② 모두 승인" |
+| 2026-11-27 | 9 | **AC-9.2 합격이 보여 주는 범위의 한계**: 공식 실행에서는 정지 노드에 CoreDNS와 Gateway VIP lease가 없어 DNS 개정과 Gateway VIP 전환은 시험되지 않음. DNS 개정의 동작은 `T023142Z`에서 확인. Gateway VIP lease가 정지 노드에 있던 시험은 개정 전 1회(50.6초, redis 없음)뿐. **redis·CoreDNS·Gateway VIP lease가 모두 한 노드에 있는 배치는 미시험** | 위 "노드 장애 시험 이력" |
+| 2026-11-27 | 9 | ADR 0001~0008을 현 구현과 대조해 Accepted 처리(0013도 승인). Phase 3·9 시험이 공개 저장소 `main`에 시험용 커밋을 push하고 revert(Phase 9 기간 26개). 마지막 재구축 커밋 `410cd27`과 그 뒤 시험 커밋 사이의 파일 차이는 0 | 사용자 승인("점검 후 Accepted") |
+| 2026-11-27 | 9 | 코드·설정 커밋 직전 `/verify`는 Phase 4 회귀(파괴적 제외). 새 코드는 push 전에는 클러스터에서 검증할 수 없음 | |
 
 ## 세션 로그
 
@@ -141,3 +164,4 @@ Hubble L7 플로우(목적지 측 REQUEST, gRPC 헬스체크 제외), 상품 페
 - 2026-11-26 Phase 6: `platform/{cert-manager,pki,gateway}/`, `apps/online-boutique/{canary,routes}/`, 앱 `cert-manager`·`pki`·`gateway`·`boutique-routes`, `tests/phase-6.sh` 작성. 첫 동기화에서 13개 앱 Synced/Healthy. East-West L7 LB를 켜고 전/후 측정 → 임시 L7 정책 적용 중 장애 → 사용자 승인으로 되돌림(ADR-0010, cilium 수동 sync 2회: 활성·복원, diff 검토). `make verify-phase N=6` → **MUST 9/9, SHOULD 1/1 PASS, AC-6.11 SKIP**, 로그 `tests/results/phase-6-20261126T120000Z.log`. 실측: Gateway `.10` Accepted·Programmed, 사설 CA 검증(CA 없이 curl exit 60), 301, 호스트 라우팅 200/200/404, canary 19/200, `x-canary: always` 20/20, Hubble `reserved:ingress` → frontend, 라벨 없는 NS Route는 `NotAllowedByListeners`. 남은 리스크: ① **Phase 8 착수 전 확인 필요**: `rollOutCiliumPods`가 없어 `policyAuditMode` 같은 Cilium ConfigMap 변경은 수동 sync 후에도 agent에 적용되지 않음, ② L7 정책 적용·제거 시 트래픽 중단이 L7 LB 없이도 소수 관찰됨 → Phase 8에서 정책 적용 시 loadgenerator 실패 관찰, ③ loadgenerator 누적 실패율 1%대(AC-5.6), ④ Hubble UI는 인증 없이 Gateway에 노출(ARCHITECTURE §13, 실습 한정), ⑤ 타임아웃은 설정만 확인(만료 동작 미검증).
 - 2026-11-26 Phase 7: `observability/{kube-prometheus-stack,loki,alloy,tempo,otel-collector,dashboards,rules}/`, 앱 7개, Cilium·Argo CD·cert-manager `values-monitoring.yaml`(cilium은 diff 검토 후 수동 sync), 트레이싱 env 8개 Deployment, Grafana HTTPRoute, `scripts/check-tls.sh`, `tests/phase-7.sh`. 20개 앱 Synced/Healthy. `DESTRUCTIVE=1 make verify-phase N=7` → **MUST 9/9, SHOULD 1/1 PASS**(FAIL 0, SKIP 0), 로그 `tests/results/phase-7-20261126T131757Z.log`. 실측: 타깃 66/66 up(필수 25종), Loki (app, container) 12종, Grafana 데이터소스 3종 OK·대시보드 37개, 보존 3d/48h/24h·PVC 3 Bound, 알림 발화 151초·211초·해제 391초. 주입 후 원복 확인(paymentservice 1/1, skip-reconcile 제거). 클러스터 Running Pod requests 합계 약 3.8 vCPU / 5.5 GiB(NFR-05 판정은 AC-9.7), infra 노드 메모리 약 4.2 GiB. 남은 리스크: ① Phase 8 전에 `rollOutCiliumPods` 해결 필요, ② Cilium sync 중 `ComparisonError` 상황의 prune 위험, ③ `cni.sh` 새 경로는 빈 클러스터에서 미실행, ④ AC-7.4는 여유 0(정확히 12종, productcatalog는 기동 때만 로그), ⑤ 관측 스택은 infra 노드 1대에 집중(단일 장애점), ⑥ AC-7.9의 UI 클릭 이동은 사람이 확인하지 않음, ⑦ 외부 HTTPS 간헐 멈춤이 Argo CD repo-server의 차트 가져오기에도 영향.
 - 2026-11-27 Phase 8: `platform/policies/{boutique,observability,argocd,l4-test}/`(NP 4·CNP 25), 앱 `policies`(wave 1), `scripts/{cilium-sync,policy-audit}.sh`, `tests/policy-audit-expected.txt`, `tests/phase-8.sh`, 알림 `HubblePolicyDropsDetected`, Golden Signals Hubble L7 패널 2개, boutique PSA restricted. 순서: 감사 모드 켬 → 정책(L7 가시성) → 클라이언트 재시작 → 단계 B 화이트리스트 → 15분 감사(0건) → 집행. `make verify-phase N=8` 3차 → **MUST 6/6, SHOULD 4/4 PASS**(FAIL 0, SKIP 0), 로그 `tests/results/phase-8-20261126T155756Z.log`. 실측: 음성 경로 7개 + 플랫폼 NS ingress 격리 2개 모두 차단·Hubble POLICY_DENIED, L7 거부 grpc 7, 엔드포인트 17/17 양방향 집행, 회귀 7개 PASS, 알림 발화 34초(대기 시작부터). 클러스터 requests 약 3.8 vCPU / 5.5 GiB. 남은 리스크: ① 업스트림이 gRPC 호출을 바꾸면 화이트리스트 갱신 필요(감사 절차 재실행), ② frontend 메타데이터 탐침 제외로 frontend → world 차단은 알림에 안 잡힘, ③ 정책 변경 시 프록시 우회 연결 문제는 원인 미확정(클라이언트 재시작으로 회피), ④ `cni.sh`의 CRD 단계·`--wait=legacy` 경로는 빈 클러스터에서 아직 미실행(Phase 9), ⑤ 외부 네트워크 일시 장애로 lint의 스키마·차트 다운로드가 자주 멈춤, ⑥ runbook `policy-debug.md` 미작성(Phase 9 AC-9.6).
+- 2026-11-27 Phase 9: ADR-0013(단일 노드 장애 내성) 반영, `tests/phase-9.sh`, `scripts/rebuild.sh`, `bootstrap/scripts/coredns-spread.sh`, `README.md`, 런북 5종, ADR 승인 처리. 클린 재구축 3회(사용자가 매번 승인): ① 부트스트랩 결함 ② AC-9.2 → 수정 후 ③ **통과**(`410cd27`): Phase 1~8 FAIL 0, AC-9.1~9.5·9.7 PASS, `make up` 580초, AC-9.2 복구 60.5초(응답 65.0초), AC-9.3 12.3초, AC-9.4 bad release → Degraded 245.3초, revert → Healthy 173.7초(한도 300초), AC-9.5 2.3초, requests 4.21 vCPU / 5.67 GiB. AC-9.6은 이 문서를 갱신한 뒤, AC-9.8은 태그를 만든 뒤에만 판정할 수 있다. 남은 리스크: ① Cilium이 제외된 백엔드로 DNS를 보내는 원인 미확인(완화만) ② redis·CoreDNS·Gateway VIP lease 동시 배치의 노드 장애 미시험, 크래시(lease 미반납) 전환 시간 미측정 ③ AC-9.2 복구 시각은 요청 전송 기준이라 응답 도착은 이보다 늦음(이번 4.5초) ④ 앱 워커 장애 내성은 홈 화면 경로까지 — 다른 단일 레플리카는 약 6분 실패(설정값에서 계산, 미측정), redis-cart가 옮겨지면 장바구니 소실(노드가 약 1분 응답 없으면) ⑤ infra 노드는 단일 장애점 ⑥ requests 없는 플랫폼 Pod가 있어 AC-9.7 합계는 실제 필요량(working set 7.46 GiB)보다 작음 ⑦ AC-7.4는 여유 0(정확히 12종) ⑧ AC-7.7 장애 주입의 실패가 loadgenerator 누적 통계에 남아, 뒤이어 실행되는 AC-8.3의 AC-5.6 재확인은 여유가 작을 수 있음(사전 계산 약 0.85%, 한도 1%. 공식 실행은 PASS이나 실측 비율은 로그에 남지 않음) ⑨ 재구축 후 AC-8.1은 SKIP — 업스트림이 gRPC 호출을 바꾸면 감사를 다시 해야 함 ⑩ 외부 네트워크 간헐 장애(lint 다운로드, 외부 HTTPS) ⑪ 인수 diff 캐시 오류의 복구 분기 미실행
