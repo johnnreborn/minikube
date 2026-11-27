@@ -4,7 +4,8 @@
 #   DESTRUCTIVE=1  runs the fault-injection ACs (SPEC §7.6): AC-9.5 deletes a CiliumNetworkPolicy, AC-9.3 deletes 3
 #                  random boutique pods, AC-9.4 pushes a broken canary release to origin/<GITOPS_REVISION> and reverts
 #                  it (2 commits per run; needs a clean tree equal to the remote), AC-9.2 stops the zone-b worker
-#                  container for ~3.5 minutes. The EXIT trap restores all of them. Without it they are SKIP.
+#                  container for ~3.5 minutes, after moving redis-cart onto it (cordon the other app nodes, delete the
+#                  pod, uncordon; the carts are lost). The EXIT trap restores all of them. Without it they are SKIP.
 # Order: read-only checks first, then the faults from the lightest to the node failure.
 set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
@@ -286,6 +287,37 @@ frontend_ready_elsewhere() {  # <dead node> → number of Ready, non-terminating
 }
 l2_leases() { k -n kube-system get lease -o json | jq -r '[.items[] | select(.metadata.name | startswith("cilium-l2announce-"))
   | "\(.metadata.name | sub("cilium-l2announce-"; ""))=\(.spec.holderIdentity)"] | join(" ")'; }
+CORDONED_FILE=$(mktemp); on_cleanup "rm -f '$CORDONED_FILE'"
+uncordon_nodes() {        # EXIT trap as well: only the nodes this test cordoned
+  local n
+  while IFS= read -r n; do [[ -z "$n" ]] || k uncordon "$n" >/dev/null || return 1; done <"$CORDONED_FILE"
+  : >"$CORDONED_FILE"
+}
+on_cleanup uncordon_nodes
+redis_nodes() {           # nodes of the Ready, non-terminating redis-cart pods
+  k -n "$NS" get pods -l app=redis-cart -o json | jq -r '[.items[] | select(.metadata.deletionTimestamp == null
+    and ((.status.conditions // []) | map(select(.type=="Ready"))[0].status) == "True") | .spec.nodeName] | join(" ")'
+}
+redis_only_on() { [[ "$(redis_nodes)" == "$1" ]]; }
+# AC-9.2 worst case (SPEC §6.9 note): the only redis-cart pod runs on the node that will be stopped
+place_redis_on() {  # <node>
+  local node=$1 other others rc=0
+  redis_only_on "$node" && return 0
+  others=$(k get nodes -l node.boutique.io/pool=app -o json |
+    jq -r --arg n "$node" '.items[] | select(.metadata.name != $n and .spec.unschedulable != true) | .metadata.name') || return 1
+  for other in $others; do
+    echo "$other" >>"$CORDONED_FILE"
+    k cordon "$other" >/dev/null || { uncordon_nodes; return 1; }
+  done
+  k -n "$NS" delete pod -l app=redis-cart --wait=true --timeout=60s >/dev/null && wait_for 180 redis_only_on "$node" || rc=1
+  uncordon_nodes || rc=1
+  (( rc == 0 )) || { echo "could not place redis-cart on $node"; k -n "$NS" get pods -l app=redis-cart -o wide; }
+  return $rc
+}
+shop_serves() {           # 5 consecutive 200s through the Gateway
+  [[ $(docker run --rm --label ac-test=true --network "$DOCKER_NETWORK" -v "$CACHE_DIR:/certs:ro" --entrypoint sh "$CURL_IMAGE" -c \
+    "for i in 1 2 3 4 5; do curl -s -o /dev/null -m 5 -w '%{http_code}\n' --cacert /certs/ca.crt --resolve $SHOP:443:$GW_IP https://$SHOP/; sleep 1; done" | grep -c '^200$') -eq 5 ]]
+}
 check_node_failure() {
   local node on_node t0 notready="" restored="" start_epoch ticks res log
   wait_for 120 bash -c "kubectl --context $CTX wait --for=condition=Ready nodes --all --timeout=5s >/dev/null 2>&1" || { echo "precondition: nodes"; return 1; }
@@ -293,11 +325,14 @@ check_node_failure() {
   [[ $(coredns_nodes) -ge 2 ]] || { echo "precondition: CoreDNS not on 2 nodes"; return 1; }
   node=$(k get nodes -l topology.kubernetes.io/zone=zone-b -o jsonpath='{.items[0].metadata.name}')
   [[ -n "$node" ]] || return 1
+  extract_ca cert-manager boutique-root-ca tls.crt || return 1
+  place_redis_on "$node" || return 1
+  wait_for 180 boutique_converged || { echo "boutique not converged after moving redis-cart"; return 1; }
+  wait_for 180 shop_serves || { echo "shop not serving after moving redis-cart"; return 1; }
   on_node=$(k get pods -A --field-selector "spec.nodeName=$node" -o json |
     jq -r '[.items[] | select(.metadata.namespace == "boutique" or (.metadata.name | startswith("coredns"))) | .metadata.labels.app // .metadata.name] | sort | join(" ")')
   report "zone-b node $node runs: $on_node"
   report "L2 announcements before: $(l2_leases)"
-  extract_ca cert-manager boutique-root-ca tls.crt || return 1
   # 2 requests/s, each in the background so a slow answer does not slow the rate; timestamps are /proc/uptime
   ticks=$(( (WINDOW + 40) * 2 ))
   docker rm -f ac-9-2-probe >/dev/null 2>&1
@@ -305,7 +340,9 @@ check_node_failure() {
     "i=0; while [ \$i -lt $ticks ]; do i=\$((i+1)); ( t=\$(cut -d' ' -f1 /proc/uptime); c=\$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 --cacert /certs/ca.crt --resolve $SHOP:443:$GW_IP https://$SHOP/); echo \"\$t \$c\" ) & sleep 0.5; done; wait" >/dev/null || return 1
   sleep 15
   [[ "$(docker logs ac-9-2-probe 2>&1 | tail -10 | awk '{print $2}' | sort -u)" == 200 ]] || { echo "shop not healthy before the fault"; docker logs ac-9-2-probe 2>&1 | tail -5; return 1; }
+  redis_only_on "$node" || { echo "redis-cart is not on $node any more: $(redis_nodes)"; return 1; }
   echo "$node" >"$STOPPED_FILE"
+  report "docker stop $node at $(date -u +%FT%T.%3NZ)"
   t0=$(uptime_s)
   docker stop "$node" >/dev/null || return 1
   while le "$(since "$t0")" "$WINDOW"; do
