@@ -1,6 +1,6 @@
 # Tolerate the loss of one app worker (ADR-0013, AC-9.2). currencyservice and cartservice are on the home page request
 # path: two replicas in different zones, so one of them survives. redis-cart keeps one replica (emptyDir state) and is
-# moved quickly instead; the carts are lost when it moves.
+# moved 10s after its node turns NotReady instead (about 1 minute without a response); the carts are lost when it moves.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -50,8 +50,8 @@ spec:
         - key: node.kubernetes.io/unreachable
           operator: Exists
           effect: NoExecute
-          tolerationSeconds: 30
+          tolerationSeconds: 10
         - key: node.kubernetes.io/not-ready
           operator: Exists
           effect: NoExecute
-          tolerationSeconds: 30
+          tolerationSeconds: 10
