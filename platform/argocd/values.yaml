@@ -8,7 +8,7 @@ global:
   # network policies come from platform/policies/argocd only (one owner). The chart's own set allows every source to
   # argocd-server and every namespace to the metrics ports, which would void the ingress isolation (FR-ISO-06).
   networkPolicy:
-    create: false # served through the Gateway in Phase 6 (TLS terminated there)
+    create: false           # served through the Gateway in Phase 6 (TLS terminated there)
   # every component on the infra node (ARCHITECTURE §4)
   nodeSelector:
     kubernetes.io/os: linux
@@ -18,9 +18,10 @@ global:
       operator: Equal
       value: infra
       effect: NoSchedule
+
 configs:
   params:
-    server.insecure: true # TLS ends at the Gateway (ARCHITECTURE §13)
+    server.insecure: true                # TLS ends at the Gateway (ARCHITECTURE §13)
   cm:
     # Git change detection (SPEC §5.8, AC-9.4): the repo-server caches the branch head for timeout.reconciliation too, so
     # the worst case is cache + poll interval + jitter. The chart defaults (120s/60s, ~5 min) can miss the 5 minute
@@ -46,7 +47,6 @@ configs:
     # CiliumIdentity / CiliumEndpoint / CiliumEndpointSlice (Cilium docs "argocd-issues"); overriding the key would
     # drop the other defaults (ARCHITECTURE §15-5).
 
-    ui.bannercontent: AC-3.8 self-management probe 20261127T012004Z
 # not used in this lab: no SSO (dex) and no external notification targets (SPEC §10 Q6)
 dex:
   enabled: false
