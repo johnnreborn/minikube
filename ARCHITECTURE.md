@@ -73,7 +73,8 @@ flowchart TB
 - 인프라 워크로드는 `nodeSelector: node.boutique.io/pool=infra` + 해당 toleration. 앱은 taint 때문에 인프라 노드에 올라가지 않는다.
 - DaemonSet(cilium, cilium-envoy, node-exporter, alloy)은 모든 노드에서 동작해야 하므로 모든 taint를 tolerate 한다.
 - frontend(3), productcatalogservice(3)는 `topologySpreadConstraints`(zone, maxSkew 1, `DoNotSchedule`)로 존마다 1개.
-- frontend는 `node.kubernetes.io/unreachable`, `not-ready` toleration을 30초로 단축하여 노드 장애 시 빠르게 재스케줄.
+- frontend는 `node.kubernetes.io/unreachable`, `not-ready` toleration을 30초로(redis-cart는 10초) 단축하여 노드 장애 시 빠르게 재스케줄.
+- boutique 전 Pod는 DNS `timeout: 1`, `attempts: 3` — 유실된 질의 1건이 요청을 5초 지연시키지 않게 한다(ADR-0013).
 - `node-role.kubernetes.io/*` 라벨은 kubelet이 스스로 붙일 수 없으므로 사용자 정의 접두사 `node.boutique.io/`를 쓴다.
 
 ## 5. 네트워크 설계

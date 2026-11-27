@@ -475,10 +475,11 @@ Alertmanager: 실습용 `null` 수신자 기본 + (선택) 로컬 웹훅. 판정
 | 대상 | 변경 |
 |---|---|
 | 전체 | `namespace: boutique`, 공통 라벨 `app.kubernetes.io/part-of: online-boutique`, requests/limits 확인·보강 |
+| 전체(DNS) | `dnsConfig.options`: `timeout: 1`, `attempts: 3` — 유실된 DNS 질의 1건의 지연을 리졸버 기본 5초에서 약 1초로(ADR-0013) |
 | frontend | replicas 3, zone `topologySpreadConstraints`(`nodeTaintsPolicy: Honor`), PDB minAvailable 2, unreachable/not-ready toleration 30s |
 | productcatalogservice | replicas 3, zone 분산(`nodeTaintsPolicy: Honor`, L7 LB 실험 대상) |
 | currencyservice · cartservice | replicas 2, zone 분산(`nodeTaintsPolicy: Honor`) — 홈 화면 요청 경로의 단일 노드 장애 내성(ADR-0013) |
-| redis-cart | 단일 레플리카(emptyDir) 유지, unreachable/not-ready toleration 30s. 재스케줄 시 장바구니는 사라진다(ADR-0013) |
+| redis-cart | 단일 레플리카(emptyDir) 유지, unreachable/not-ready toleration 10s. 재스케줄 시 장바구니는 사라진다(ADR-0013) |
 | frontend-external | `lbipam.cilium.io/ips: 172.30.250.20` (L4 경로로 유지) |
 | 트레이싱 | 업스트림이 트레이싱을 지원하는 서비스에 `ENABLE_TRACING=1`, `COLLECTOR_SERVICE_ADDR=otel-collector.observability.svc.cluster.local:4317` — 실제 env 이름과 지원 서비스 목록은 고정 버전 소스(업스트림 kustomize 트레이싱 컴포넌트)에서 확인 |
 | loadgenerator | 사용자 수·속도를 낮게 조정(env 이름은 고정 버전에서 확인), 대상은 내부 frontend Service |
@@ -770,6 +771,8 @@ flowchart LR
 
 > **AC-9.1 주석**: `scripts/rebuild.sh`가 무개입으로 `make down` → `make cluster-up cni` → Phase 1·2 검증 → `make gitops-bootstrap` → `make wait-sync` → `make up`(멱등 확인) → Phase 3~8 → Phase 9 순으로 실행한다. AC-2.4의 클러스터 전체 점검(패킷 드롭 누적, agent 로그, 재시작 수)은 Phase 2를 합격한 Cilium 단독 상태에서만 의미가 있다. `make up` 소요 시간은 세 단계의 합이다.
 
+> **AC-9.2 주석**: 시험은 유일한 `redis-cart` Pod를 중단할 zone-b 워커에 배치한 상태에서 시작한다(최악 배치: 다른 app 노드를 cordon → redis Pod 삭제 → zone-b에서 Ready 확인 → uncordon. 중단돼도 EXIT trap이 uncordon). 배치가 무작위이면 최악의 경우를 확인하지 않은 채 통과할 수 있다. 판정 기준(90초, 이후 오류 0, 2분, 2 req/s, 요청 제한 5초)은 그대로다.
+
 **롤백**: 해당 없음(검증 Phase).
 
 ---
@@ -946,3 +949,4 @@ COULD 항목 중 FR-NET-05, FR-L7-08, FR-ISO-11은 채택 시 AC를 추가한다
 | 1.0-draft+10 | 2026-11-27 | §5.2·§5.9: 단일 노드 장애 내성(AC-9.2) — currencyservice·cartservice·frontend-canary 2 레플리카, 존 분산의 `nodeTaintsPolicy: Honor`, redis-cart toleration 30s, frontend-canary `progressDeadlineSeconds: 180`, CoreDNS 분산 부트스트랩 패치(ADR-0013) — 사용자 승인 |
 | 1.0-draft+11 | 2026-11-27 | §5.8: Argo CD Git 감지 주기 60s + jitter 30s(AC-9.4). §6.7: AC-7.10 재구축 판정 주석(인수 sync 이후 재시작) — 사용자 승인 |
 | 1.0-draft+12 | 2026-11-27 | §6.5 AC-5.6 주석(노드 장애 시험 후 loadgenerator 통계 초기화), §6.7 AC-7.10(노드 재시작의 `Unknown` 종료 제외), §6.9 AC-9.1 주석(Phase 1·2를 cni 직후 실행) — 사용자 승인 |
+| 1.0-draft+13 | 2026-11-27 | §5.9: boutique 전 Pod DNS `timeout: 1`·`attempts: 3`, redis-cart toleration 30s → 10s(ADR-0013 개정). §6.9: AC-9.2 주석(redis-cart를 중단할 노드에 두고 시작) — 사용자 승인 |
