@@ -6,6 +6,14 @@ spec:
   template:
     spec:
       automountServiceAccountToken: false
+      # one lost DNS datagram costs 5s with the resolver defaults (the home page looks a name up on every request);
+      # retry after 1s instead (ADR-0013)
+      dnsConfig:
+        options:
+          - name: timeout
+            value: "1"
+          - name: attempts
+            value: "3"
       securityContext:
         seccompProfile:
           type: RuntimeDefault

@@ -16,8 +16,8 @@ images:
   - name: redis
     newTag: 8.12.0-alpine
 patches:
-  # every workload: PSA restricted needs seccompProfile (the rest of the securityContext is already upstream), and no
-  # service calls the Kubernetes API (ARCHITECTURE §13)
+  # every workload: PSA restricted needs seccompProfile (the rest of the securityContext is already upstream), no
+  # service calls the Kubernetes API (ARCHITECTURE §13), and DNS lookups are retried after 1s (ADR-0013)
   - target:
       kind: Deployment
     path: patches/all-deployments.yaml
